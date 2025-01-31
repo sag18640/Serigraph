@@ -1,6 +1,7 @@
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 import os
+from twilio.rest import Client
 from dotenv import load_dotenv
 
 load_dotenv()  # Cargar variables desde .env

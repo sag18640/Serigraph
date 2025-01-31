@@ -3,6 +3,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 from twilio.rest import Client
 from dotenv import load_dotenv
 import os
+
 load_dotenv()  # Cargar variables desde .env
 app = Flask(__name__)
 
@@ -12,7 +13,6 @@ auth_token = os.environ.get('TWILIO_AUTH_TOKEN')
 
 # Inicializar el cliente de Twilio
 client = Client(account_sid, auth_token)
-
 
 # Estado de la conversación (simulado en memoria)
 user_data = {}
@@ -31,13 +31,18 @@ def webhook():
 
     # Lógica del chatbot
     if "hola" in incoming_message:
-        # Mostrar menú de servicios
-        response_message = (
-            "¡Hola! Bienvenido a nuestro servicio de atención al cliente. "
-            "Por favor, elige una opción:\n\n"
-            "1. Servicio de impresión\n"
-            "2. Servicio de diseño\n"
-            "3. Servicio de envíos"
+        # Mostrar menú de servicios con botones
+        response_message = "¡Hola! Bienvenido a nuestro servicio de atención al cliente. ¿En qué puedo ayudarte?"
+        
+        # Crear botones de respuesta rápida
+        twiml.message(response_message).append(
+            twiml.message().create_action(
+                actions=[
+                    {"button": "1. Servicio de impresión"},
+                    {"button": "2. Servicio de diseño"},
+                    {"button": "3. Servicio de envíos"}
+                ]
+            )
         )
         user_data[user_number] = {"step": "menu"}  # Guardar estado
 

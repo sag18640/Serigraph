@@ -35,14 +35,11 @@ def webhook():
         response_message = "¡Hola! Bienvenido a nuestro servicio de atención al cliente. ¿En qué puedo ayudarte?"
         
         # Crear botones de respuesta rápida
-        twiml.message(response_message).append(
-            twiml.message().create_action(
-                actions=[
-                    {"button": "1. Servicio de impresión"},
-                    {"button": "2. Servicio de diseño"},
-                    {"button": "3. Servicio de envíos"}
-                ]
-            )
+        message = twiml.message(response_message)
+        message.add(
+            "1. Servicio de impresión",
+            "2. Servicio de diseño",
+            "3. Servicio de envíos"
         )
         user_data[user_number] = {"step": "menu"}  # Guardar estado
 

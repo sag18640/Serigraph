@@ -68,7 +68,7 @@ def enviar_pdf_whatsapp(numero_usuario, file_path):
     finally:
         # Eliminar el archivo después del envío
         if os.path.exists(file_path):
-            # os.remove(file_path)
+            os.remove(file_path)
             print(f"Archivo eliminado: {file_path}")
 
 @app.route("/temp_pdfs/<path:filename>")

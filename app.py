@@ -219,7 +219,7 @@ def webhook():
                 user_data[user_number]["cantidad"] = int(incoming_message)
                 response_message = (
                     f"Perfecto. Has solicitado {user_data[user_number]['cantidad']} {user_data[user_number]['product'][0]} en "
-                    f"{user_data[user_number]['material']} de tamaño {user_data[user_number]['dimensiones'][0]}.\n"
+                    f"{user_data[user_number]['material'][0]} de tamaño {user_data[user_number]['dimensiones'][0]}.\n"
                     "¿Confirmas? (Responde 'sí' o 'no')."
                 )
                 user_data[user_number]["step"] = "confirmacion_final"

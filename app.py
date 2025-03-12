@@ -68,10 +68,10 @@ def generar_pdf(numero_usuario, material, ancho, cantidad, costo_total,user_numb
     file_path = os.path.join(TEMP_PDF_DIR, file_name)
 
     c = canvas.Canvas(file_path, pagesize=letter)
-    c.drawString(100, 750, f"Cotización de {user_data[user_number]['product'][0]} Precio: Q{user_data[user_number]['product'][1]}")
+    c.drawString(100, 750, f"Cotización de {user_data[user_number]['product'][0]} ")
     c.drawString(100, 730, f"Cliente: {numero_usuario}")
-    c.drawString(100, 710, f"Material: {material} Precio: Q{user_data[user_number]['material'][1]}")
-    c.drawString(100, 690, f"Tamaño: {ancho} Precio: Q{user_data[user_number]['dimensiones'][1]}")
+    c.drawString(100, 710, f"Material: {material} ")
+    c.drawString(100, 690, f"Tamaño: {ancho} ")
     c.drawString(100, 670, f"Cantidad: {cantidad}")
     c.drawString(100, 650, f"Total estimado: Q{costo_total:.2f}")
     c.drawString(100, 630, "Gracias por cotizar con nosotros.")

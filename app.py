@@ -166,12 +166,12 @@ def webhook():
                             dim=dimens
                             price_dim=diccionario_dimensiones[dimens]
 
-                    text_mat = f"Has ingresado un tamaño de {dim} cm con un precio de Q{price_dim}.\n"
+                    text_mat = f"Has ingresado un tamaño de {dim}  con un precio de Q{price_dim}.\n"
                     text_mat+="Ahora, elige el material:\n"
                     for i, mat in enumerate(diccionario_material, start=1):
                         text_mat += f"{i}. {mat}\n"
                     response_message = (text_mat)
-                    user_data[user_number]['step'] = "material"
+                    user_data[user_number]['step'] = "seleccion_material"
                     user_data[user_number]['dimensiones']=[dim,price_dim]
         elif user_data[user_number]["step"] == "dimension_specific":
             user_data[user_number]['step'] = "impresion"

@@ -29,16 +29,16 @@ for fila in filas:
     diccionario_productos[fila[1]]=fila[2]
 
 #dimensiones
-query_products="SELECT * FROM dimensions_volante;"
-cursor.execute(query_products)
+query_dim="SELECT * FROM dimensions_volante;"
+cursor.execute(query_dim)
 filas = cursor.fetchall()
 diccionario_dimensiones={}
 for fila in filas:
     diccionario_dimensiones[fila[1]]=fila[2]
 
 #materiales
-query_products="SELECT * FROM material;"
-cursor.execute(query_products)
+query_mat="SELECT * FROM material;"
+cursor.execute(query_mat)
 filas = cursor.fetchall()
 diccionario_material={}
 numero=1

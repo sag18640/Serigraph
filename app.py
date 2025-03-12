@@ -172,7 +172,7 @@ def webhook():
                         text_mat += f"{i}. {mat}\n"
                     response_message = (text_mat)
                     user_data[user_number]['step'] = "material"
-                    user_data[user_number]['step']['dimensiones']=[dim,price_dim]
+                    user_data[user_number]['dimensiones']=[dim,price_dim]
         elif user_data[user_number]["step"] == "dimension_specific":
             user_data[user_number]['step'] = "impresion"
         elif user_data[user_number]["step"] == "impresion":
@@ -196,7 +196,7 @@ def webhook():
 
                 # Guarda los cambios en la base de datos
                 conn.commit()
-                user_data[user_number]['step']['dimensiones']=[anchoxalto,price_dim]
+                user_data[user_number]['dimensiones']=[anchoxalto,price_dim]
                 user_data[user_number]["step"]="seleccion_material"
             except:
                 response_message = "Formato incorrecto. Por favor, ingresa el ancho y alto en formato 'anchoxalto precio'."

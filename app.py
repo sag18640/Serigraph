@@ -62,18 +62,18 @@ def obtener_url_pdf(file_path):
     file_name = os.path.basename(file_path)
     return f"https://serigraph.onrender.com/temp_pdfs/{file_name}"
 
-def generar_pdf(numero_usuario, material, ancho, cantidad, costo_total):
+def generar_pdf(numero_usuario, material, ancho, cantidad, costo_total,user_number):
     """Genera un PDF con la cotización y devuelve la ruta del archivo."""
     file_name = f"cotizacion_{numero_usuario}_{int(time.time())}.pdf"
     file_path = os.path.join(TEMP_PDF_DIR, file_name)
 
     c = canvas.Canvas(file_path, pagesize=letter)
-    c.drawString(100, 750, "Cotización de Impresión")
+    c.drawString(100, 750, f"Cotización de {user_data[user_number]['product'][0]} Precio: Q{user_data[user_number]['product'][1]}")
     c.drawString(100, 730, f"Cliente: {numero_usuario}")
-    c.drawString(100, 710, f"Material: {material}")
-    c.drawString(100, 690, f"Tamaño: {ancho} ")
+    c.drawString(100, 710, f"Material: {material} Precio: Q{user_data[user_number]["material"][1]}")
+    c.drawString(100, 690, f"Tamaño: {ancho} Precio: Q{user_data[user_number]["dimensiones"][1]}")
     c.drawString(100, 670, f"Cantidad: {cantidad}")
-    c.drawString(100, 650, f"Total estimado: ${costo_total:.2f}")
+    c.drawString(100, 650, f"Total estimado: Q{costo_total:.2f}")
     c.drawString(100, 630, "Gracias por cotizar con nosotros.")
     
     c.save()
@@ -233,9 +233,9 @@ def webhook():
 
                 # Generar el PDF
                 file_path = generar_pdf(
-                    user_number, user_data[user_number]["material"], 
+                    user_number, user_data[user_number]["material"][0], 
                     user_data[user_number]['dimensiones'][0], 
-                    user_data[user_number]["cantidad"], costo_total
+                    user_data[user_number]["cantidad"], costo_total,user_number
                 )
 
                 # Enviar el PDF y eliminarlo después

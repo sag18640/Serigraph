@@ -48,13 +48,14 @@ def enviar_pdf_whatsapp(numero_usuario, file_path):
     """Envía el PDF por WhatsApp y luego lo elimina."""
     try:
         media_url = f"https://serigraph.onrender.com/temp_pdfs/{os.path.basename(file_path)}"  # Asegúrate de servir los archivos correctamente
-
+        print(f"URL: {media_url}")
         message = client.messages.create(
             from_="whatsapp:+14155238886",  
             to=numero_usuario,
             media_url=[media_url],
             body="Aquí tienes tu cotización en PDF. ¡Gracias por cotizar con nosotros!"
         )
+        print(f"MENSAJE : {message}")
 
         print(f"Mensaje enviado con SID: {message.sid}")
 

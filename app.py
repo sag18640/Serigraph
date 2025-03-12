@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 import os
+import sqlite3
 import time
 
 load_dotenv()

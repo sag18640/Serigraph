@@ -224,7 +224,7 @@ def webhook():
                 )
                 user_data[user_number]["step"] = "confirmacion_final"
             else:
-                response_message = "Por favor, ingresa un número válido."
+                response_message = "Por favor, ingresa una opción válida."
 
         elif user_data[user_number]["step"] == "confirmacion_final":
             if "sí" in incoming_message:

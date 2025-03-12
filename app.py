@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, send_from_directory
 from twilio.twiml.messaging_response import MessagingResponse
 from twilio.rest import Client
 from dotenv import load_dotenv
@@ -25,6 +25,9 @@ TEMP_PDF_DIR = "temp_pdfs"
 if not os.path.exists(TEMP_PDF_DIR):
     os.makedirs(TEMP_PDF_DIR)
 
+def obtener_url_pdf(file_path):
+    file_name = os.path.basename(file_path)
+    return f"https://serigraph.onrender.com/temp_pdfs/{file_name}"
 
 def generar_pdf(numero_usuario, material, ancho, alto, cantidad, costo_total):
     """Genera un PDF con la cotización y devuelve la ruta del archivo."""
@@ -68,6 +71,10 @@ def enviar_pdf_whatsapp(numero_usuario, file_path):
             # os.remove(file_path)
             print(f"Archivo eliminado: {file_path}")
 
+@app.route("/temp_pdfs/<path:filename>")
+def descargar_pdf(filename):
+    """Sirve los archivos PDF almacenados en la carpeta temp_pdfs."""
+    return send_from_directory(TEMP_PDF_DIR, filename, as_attachment=True)
 
 @app.route("/webhook", methods=["POST"])
 def webhook():

@@ -12,7 +12,7 @@ load_dotenv()
 app = Flask(__name__)
 
 #Configurar base de datos
-conn = sqlite3.connect('/var/www/seri.db')
+conn = sqlite3.connect('/var/www/db_serigraph/seri.db')
 cursor = conn.cursor()
 
 # Configurar Twilio

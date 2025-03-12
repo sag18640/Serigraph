@@ -2,17 +2,71 @@ from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 from twilio.rest import Client
 from dotenv import load_dotenv
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 import os
-load_dotenv()  
+import time
+
+load_dotenv()
 app = Flask(__name__)
 
+# Configurar Twilio
 account_sid = os.environ.get('TWILIO_ACCOUNT_SID')
 auth_token = os.environ.get('TWILIO_AUTH_TOKEN')
-
 client = Client(account_sid, auth_token)
 
-
+# Diccionario para manejar los estados de los usuarios
 user_data = {}
+
+# Carpeta temporal para almacenar PDFs
+TEMP_PDF_DIR = "temp_pdfs"
+
+# Crear la carpeta si no existe
+if not os.path.exists(TEMP_PDF_DIR):
+    os.makedirs(TEMP_PDF_DIR)
+
+
+def generar_pdf(numero_usuario, material, ancho, alto, cantidad, costo_total):
+    """Genera un PDF con la cotización y devuelve la ruta del archivo."""
+    file_name = f"cotizacion_{numero_usuario}_{int(time.time())}.pdf"
+    file_path = os.path.join(TEMP_PDF_DIR, file_name)
+
+    c = canvas.Canvas(file_path, pagesize=letter)
+    c.drawString(100, 750, "Cotización de Impresión")
+    c.drawString(100, 730, f"Cliente: {numero_usuario}")
+    c.drawString(100, 710, f"Material: {material}")
+    c.drawString(100, 690, f"Tamaño: {ancho}x{alto} cm")
+    c.drawString(100, 670, f"Cantidad: {cantidad}")
+    c.drawString(100, 650, f"Total estimado: ${costo_total:.2f}")
+    c.drawString(100, 630, "Gracias por cotizar con nosotros.")
+    
+    c.save()
+    return file_path  # Devolvemos la ruta del archivo PDF
+
+
+def enviar_pdf_whatsapp(numero_usuario, file_path):
+    """Envía el PDF por WhatsApp y luego lo elimina."""
+    try:
+        media_url = f"https://serigraph.onrender.com/temp_pdfs/{os.path.basename(file_path)}"  # Asegúrate de servir los archivos correctamente
+
+        message = client.messages.create(
+            from_="whatsapp:+14155238886",  
+            to=numero_usuario,
+            media_url=[media_url],
+            body="Aquí tienes tu cotización en PDF. ¡Gracias por cotizar con nosotros!"
+        )
+
+        print(f"Mensaje enviado con SID: {message.sid}")
+
+    except Exception as e:
+        print(f"Error al enviar PDF: {e}")
+
+    finally:
+        # Eliminar el archivo después del envío
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            print(f"Archivo eliminado: {file_path}")
+
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -100,14 +154,17 @@ def webhook():
                 precios = {"Papel couché": 0.50, "Vinil adhesivo": 1.00, "Lona": 2.00}
                 costo_total = precios[user_data[user_number]["material"]] * user_data[user_number]["cantidad"]
 
-                response_message = (
-                    f"¡Gracias! Tu cotización es:\n"
-                    f"Material: {user_data[user_number]['material']}\n"
-                    f"Tamaño: {user_data[user_number]['ancho']}x{user_data[user_number]['alto']} cm\n"
-                    f"Cantidad: {user_data[user_number]['cantidad']}\n"
-                    f"Total estimado: ${costo_total:.2f}\n\n"
-                    "Nos pondremos en contacto para finalizar el pedido."
+                # Generar el PDF
+                file_path = generar_pdf(
+                    user_number, user_data[user_number]["material"], 
+                    user_data[user_number]["ancho"], user_data[user_number]["alto"], 
+                    user_data[user_number]["cantidad"], costo_total
                 )
+
+                # Enviar el PDF y eliminarlo después
+                enviar_pdf_whatsapp(user_number, file_path)
+
+                response_message = "¡Tu cotización ha sido generada y enviada como PDF a tu WhatsApp!"
                 del user_data[user_number]
             else:
                 response_message = "Cotización cancelada. ¿En qué más puedo ayudarte?"

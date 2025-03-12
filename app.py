@@ -202,7 +202,8 @@ def webhook():
                 response_message = "Formato incorrecto. Por favor, ingresa el ancho y alto en formato 'anchoxalto precio'."
 
         elif user_data[user_number]["step"] == "seleccion_material":
-            
+            print("MATERIALES: ",materiales)
+            print("MENSAJE: ",incoming_message)
             if incoming_message in materiales:
                 user_data[user_number]["material"] = [materiales[incoming_message],diccionario_material[materiales[incoming_message]]]
                 response_message = (

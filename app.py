@@ -62,7 +62,7 @@ def obtener_url_pdf(file_path):
     file_name = os.path.basename(file_path)
     return f"https://serigraph.onrender.com/temp_pdfs/{file_name}"
 
-def generar_pdf(numero_usuario, material, ancho, alto, cantidad, costo_total):
+def generar_pdf(numero_usuario, material, ancho, cantidad, costo_total):
     """Genera un PDF con la cotización y devuelve la ruta del archivo."""
     file_name = f"cotizacion_{numero_usuario}_{int(time.time())}.pdf"
     file_path = os.path.join(TEMP_PDF_DIR, file_name)
@@ -71,7 +71,7 @@ def generar_pdf(numero_usuario, material, ancho, alto, cantidad, costo_total):
     c.drawString(100, 750, "Cotización de Impresión")
     c.drawString(100, 730, f"Cliente: {numero_usuario}")
     c.drawString(100, 710, f"Material: {material}")
-    c.drawString(100, 690, f"Tamaño: {ancho}x{alto} cm")
+    c.drawString(100, 690, f"Tamaño: {ancho} ")
     c.drawString(100, 670, f"Cantidad: {cantidad}")
     c.drawString(100, 650, f"Total estimado: ${costo_total:.2f}")
     c.drawString(100, 630, "Gracias por cotizar con nosotros.")

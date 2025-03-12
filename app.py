@@ -11,10 +11,42 @@ import time
 load_dotenv()
 app = Flask(__name__)
 
+#Configurar base de datos
+conn = sqlite3.connect('/mnt/data/mi_basedatos.db')
+cursor = conn.cursor()
+
 # Configurar Twilio
 account_sid = os.environ.get('TWILIO_ACCOUNT_SID')
 auth_token = os.environ.get('TWILIO_AUTH_TOKEN')
 client = Client(account_sid, auth_token)
+
+#productos
+query_products="SELECT * FROM products;"
+cursor.execute(query_products)
+filas = cursor.fetchall()
+diccionario_productos={}
+for fila in filas:
+    diccionario_productos[fila[1]]=fila[2]
+
+#dimensiones
+query_products="SELECT * FROM dimensions_volante;"
+cursor.execute(query_products)
+filas = cursor.fetchall()
+diccionario_dimensiones={}
+for fila in filas:
+    diccionario_dimensiones[fila[1]]=fila[2]
+
+#materiales
+query_products="SELECT * FROM material;"
+cursor.execute(query_products)
+filas = cursor.fetchall()
+diccionario_material={}
+numero=1
+for fila in filas:
+    diccionario_material[fila[1]]=fila[2]
+    materiales = {numero:fila[1]}
+    numero+=1
+
 
 # Diccionario para manejar los estados de los usuarios
 user_data = {}
@@ -69,7 +101,7 @@ def enviar_pdf_whatsapp(numero_usuario, file_path):
     finally:
         # Eliminar el archivo después del envío
         if os.path.exists(file_path):
-            os.remove(file_path)
+            # os.remove(file_path)
             print(f"Archivo eliminado: {file_path}")
 
 @app.route("/temp_pdfs/<path:filename>")
@@ -86,61 +118,96 @@ def webhook():
 
     response_message = ""
     twiml = MessagingResponse()
-
+    print(incoming_message)
     if "hola" in incoming_message:
         response_message = (
-            "¡Hola! Bienvenido a nuestro servicio de atención al cliente. "
+            "¡Hola! Bienvenido al cotizador de Serigraph. "
             "Por favor, elige una opción:\n\n"
-            "1. Servicio de impresión\n"
-            "2. Servicio de diseño\n"
-            "3. Servicio de envíos"
+            "1. Cotización\n"
         )
         user_data[user_number] = {"step": "menu"}  
 
     elif user_number in user_data:
         if user_data[user_number]["step"] == "menu":
             if "1" in incoming_message:
-                response_message = (
-                    "Has seleccionado el servicio de impresión. "
-                    "Por favor, ingresa el ancho y alto en centímetros (ejemplo: 20x30)."
-                )
-                user_data[user_number] = {"step": "impresion", "service": "impresión"}
-            elif "2" in incoming_message:
-                response_message = (
-                    "Has seleccionado el servicio de diseño. "
-                    "Por favor, describe tu proyecto."
-                )
-                user_data[user_number] = {"step": "diseno", "service": "diseño"}
-            elif "3" in incoming_message:
-                response_message = (
-                    "Has seleccionado el servicio de envíos. "
-                    "Por favor, ingresa la dirección de entrega."
-                )
-                user_data[user_number] = {"step": "envios", "service": "envíos"}
-            else:
-                response_message = "Opción no válida. Por favor, elige 1, 2 o 3."
 
+                texto = "Has seleccionado el servicio de cotización \n. Ahora, elige el producto:\n"
+                for i, producto in enumerate(diccionario_productos, start=1):
+                    texto += f"{i}. {producto}\n"
+                    
+                print(texto)
+                response_message = (
+                    texto
+                )
+                user_data[user_number] = {"step": "productos", "service": "cotizacion"}
+        
+        elif user_data[user_number]["step"]=="productos":
+            producto_selected=incoming_message
+            if int(producto_selected)<=len(diccionario_productos):
+                for i,producto in enumerate(diccionario_productos,start=1):
+                    if i==int(producto_selected):
+                        product=producto
+                        price=diccionario_productos[producto]
+                user_data[user_number] = {"step": "dimensiones", "service": "cotizacion","product":[product,price]}
+                text_dimen = f"Has seleccionado {product} que tiene un precio de Q{price} \n. Ahora, elige el tamaño:\n"
+                for i, dimen in enumerate(diccionario_dimensiones, start=1):
+                    text_dimen += f"{i}. {dimen}\n"
+                text_dimen+="Ó ingrese 0 si quiere ingresar un tamaño variable (Ej: 20x10) en cm"
+                response_message=(text_dimen)
+        elif user_data[user_number]["step"] == "dimensiones":
+            dim_selected=incoming_message
+            if int(dim_selected)<=len(diccionario_dimensiones):
+                if dim_selected==0:
+                    user_data[user_number]['step'] = "dimension_specific"
+                    response_message("Por favor, ingresa el ancho y alto en centímetros y el precio de dicho tamaño (ejemplo: '20x30 10.0').")
+                else:
+                    for i,dimens in enumerate(diccionario_dimensiones,start=1):
+                        if i==int(dim_selected):
+                            dim=dimens
+                            price_dim=diccionario_dimensiones[dimens]
+
+                    text_mat = f"Has ingresado un tamaño de {dim} cm con un precio de Q{price_dim}.\n"
+                    text_mat+="Ahora, elige el material:\n"
+                    for i, mat in enumerate(diccionario_material, start=1):
+                        text_mat += f"{i}. {mat}\n"
+                    response_message = (text_mat)
+                    user_data[user_number]['step'] = "material"
+                    user_data[user_number]['step']['dimensiones']=[dim,price_dim]
+        elif user_data[user_number]["step"] == "dimension_specific":
+            user_data[user_number]['step'] = "impresion"
         elif user_data[user_number]["step"] == "impresion":
             try:
                 ancho, alto = incoming_message.split("x")
-                response_message = (
-                    f"Has ingresado un tamaño de {ancho}x{alto} cm.\n"
-                    "Ahora, elige el material:\n"
-                    "1. Papel couché\n"
-                    "2. Vinil adhesivo\n"
-                    "3. Lona"
-                )
-                user_data[user_number].update({"ancho": ancho, "alto": alto, "step": "seleccion_material"})
+                alto,precio=alto.split(" ")
+                # response_message = (
+                    
+                #     "Ahora, elige el material:\n"
+                #     "1. Papel couché\n"
+                #     "2. Vinil adhesivo\n"
+                #     "3. Lona"
+                # )
+                text_mat = f"Has ingresado un tamaño de {ancho}x{alto} cm con un precio de Q{precio}.\n"
+                text_mat+="Ahora, elige el material:\n"
+                for i, mat in enumerate(diccionario_material, start=1):
+                    text_mat += f"{i}. {mat}\n"
+                response_message = (text_mat)
+                anchoxalto=str(ancho)+"x"+str(alto)
+                cursor.execute("INSERT INTO dimensions_volante (dimension, price) VALUES (?, ?)", (anchoxalto, precio))
+
+                # Guarda los cambios en la base de datos
+                conn.commit()
+                user_data[user_number]['step']['dimensiones']=[anchoxalto,price_dim]
+                user_data[user_number]["step"]="seleccion_material"
             except:
-                response_message = "Formato incorrecto. Por favor, ingresa el ancho y alto en formato '20x30'."
+                response_message = "Formato incorrecto. Por favor, ingresa el ancho y alto en formato 'anchoxalto precio'."
 
         elif user_data[user_number]["step"] == "seleccion_material":
-            materiales = {"1": "Papel couché", "2": "Vinil adhesivo", "3": "Lona"}
+            
             if incoming_message in materiales:
-                user_data[user_number]["material"] = materiales[incoming_message]
+                user_data[user_number]["material"] = [materiales[incoming_message],diccionario_material[materiales[incoming_message]]]
                 response_message = (
                     f"Seleccionaste {materiales[incoming_message]}.\n"
-                    "Ahora, ingresa la cantidad de volantes que deseas imprimir."
+                    f"Ahora, ingresa la cantidad de {user_data[user_number]['product'][0]} que deseas cotizar."
                 )
                 user_data[user_number]["step"] = "seleccion_cantidad"
             else:
@@ -150,8 +217,8 @@ def webhook():
             if incoming_message.isdigit():
                 user_data[user_number]["cantidad"] = int(incoming_message)
                 response_message = (
-                    f"Perfecto. Has solicitado {user_data[user_number]['cantidad']} volantes en "
-                    f"{user_data[user_number]['material']} de {user_data[user_number]['ancho']}x{user_data[user_number]['alto']} cm.\n"
+                    f"Perfecto. Has solicitado {user_data[user_number]['cantidad']} {user_data[user_number]['product'][0]} en "
+                    f"{user_data[user_number]['material']} de tamaño {user_data[user_number]['dimensiones'][0]}.\n"
                     "¿Confirmas? (Responde 'sí' o 'no')."
                 )
                 user_data[user_number]["step"] = "confirmacion_final"
@@ -161,12 +228,12 @@ def webhook():
         elif user_data[user_number]["step"] == "confirmacion_final":
             if "sí" in incoming_message:
                 precios = {"Papel couché": 0.50, "Vinil adhesivo": 1.00, "Lona": 2.00}
-                costo_total = precios[user_data[user_number]["material"]] * user_data[user_number]["cantidad"]
+                costo_total = (int(user_data[user_number]['dimensiones'][1])+int(user_data[user_number]['product'][1])+int(user_data[user_number]['material'][1]))*user_data[user_number]['cantidad']
 
                 # Generar el PDF
                 file_path = generar_pdf(
                     user_number, user_data[user_number]["material"], 
-                    user_data[user_number]["ancho"], user_data[user_number]["alto"], 
+                    user_data[user_number]['dimensiones'][0], 
                     user_data[user_number]["cantidad"], costo_total
                 )
 

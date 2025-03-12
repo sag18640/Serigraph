@@ -204,7 +204,7 @@ def webhook():
         elif user_data[user_number]["step"] == "seleccion_material":
             print("MATERIALES: ",materiales)
             print("MENSAJE: ",incoming_message)
-            if incoming_message in materiales:
+            if int(incoming_message) in materiales:
                 user_data[user_number]["material"] = [materiales[incoming_message],diccionario_material[materiales[incoming_message]]]
                 response_message = (
                     f"Seleccionaste {materiales[incoming_message]}.\n"

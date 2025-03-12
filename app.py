@@ -205,9 +205,9 @@ def webhook():
             print("MATERIALES: ",materiales)
             print("MENSAJE: ",incoming_message)
             if int(incoming_message) in materiales:
-                user_data[user_number]["material"] = [materiales[incoming_message],diccionario_material[materiales[incoming_message]]]
+                user_data[user_number]["material"] = [materiales[int(incoming_message)],diccionario_material[materiales[int(incoming_message)]]]
                 response_message = (
-                    f"Seleccionaste {materiales[incoming_message]}.\n"
+                    f"Seleccionaste {materiales[int(incoming_message)]}.\n"
                     f"Ahora, ingresa la cantidad de {user_data[user_number]['product'][0]} que deseas cotizar."
                 )
                 user_data[user_number]["step"] = "seleccion_cantidad"

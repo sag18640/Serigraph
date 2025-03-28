@@ -27,6 +27,8 @@ TEMP_PDF_DIR = "temp_pdfs"
 if not os.path.exists(TEMP_PDF_DIR):
     os.makedirs(TEMP_PDF_DIR)
 
+def formato_monetario(valor):
+    return f"Q{valor:,.2f}"
 
 
 def generar_pdf(numero_usuario, material, dimensiones, cantidad, costo_total, user_number, descripcion_producto):
@@ -35,32 +37,32 @@ def generar_pdf(numero_usuario, material, dimensiones, cantidad, costo_total, us
 
     c = canvas.Canvas(file_path, pagesize=letter)
 
-    # Imagen del logo (asegúrate de tener logo.png)
-    logo = ImageReader('/opt/render/project/src/seri.png')
-    c.drawImage(logo, 50, 700, width=100, height=60)  # Posiciona el logo
+    # Inserta la imagen del logo correctamente (ajusta tamaño y posición según tu logo real)
+    logo = ImageReader('/var/www/db_serigraph/seri.png')
+    c.drawImage(logo, 50, 720, width=120, height=70, preserveAspectRatio=True)
 
-    # Datos empresa
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(160, 740, "Serigráfica Internacional, S.A.")
+    # Datos de la empresa (alineación más precisa)
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(200, 770, "Serigráfica Internacional, S.A.")
     c.setFont("Helvetica", 10)
-    c.drawString(160, 725, "10 avenida 25-63 zona 13, Complejo industrial Aurora Bodega 13")
-    c.drawString(160, 710, "Tel: (502) 2319-2900")
-    c.drawString(160, 695, "NIT: 528440-6")
+    c.drawString(200, 755, "10 avenida 25-63 zona 13, Complejo Industrial Aurora Bodega 13")
+    c.drawString(200, 740, "Tel: (502) 2319-2900")
+    c.drawString(200, 725, "NIT: 528440-6")
 
-    # Número de cotización y fecha
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(400, 740, f"Cotización No. {int(time.time())%100000}")
+    # Número de cotización y fecha (bien alineados)
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(430, 770, f"Cotización No. {int(time.time())%100000}")
     c.setFont("Helvetica", 10)
-    c.drawString(400, 725, f"Fecha: {time.strftime('%d/%m/%Y')}")
+    c.drawString(430, 755, f"Fecha: {time.strftime('%d/%m/%Y')}")
 
     # Línea divisoria superior
-    c.line(50, 685, 560, 685)
+    c.line(50, 710, 560, 710)
 
-    # Dirigido a:
+    # Dirigido a (ajuste en posición)
     c.setFont("Helvetica-Bold", 10)
-    c.drawString(50, 665, f"Dirigido a: {numero_usuario}")
+    c.drawString(50, 690, f"Dirigido a: {numero_usuario}")
 
-    # Información adicional estándar
+    # Información adicional (mejor espaciado)
     c.setFont("Helvetica", 9)
     texto_info = (
         "El tiempo de entrega es de 5 días hábiles, desde la aprobación del proyecto y arte.\n"
@@ -71,28 +73,33 @@ def generar_pdf(numero_usuario, material, dimensiones, cantidad, costo_total, us
         "Att: José David\n"
         "Gerente General"
     )
-    text_object = c.beginText(50, 640)
+    text_object = c.beginText(50, 660)
+    text_object.setLeading(13)  # Espaciado entre líneas más legible
     for linea in texto_info.split("\n"):
         text_object.textLine(linea)
     c.drawText(text_object)
 
-    # Tabla de producto y precios
-    c.rect(50, 450, 510, 100)  # Rectángulo exterior
+    # Tabla de producto y precios (claramente dividida y alineada)
+    c.rect(50, 480, 500, 80, stroke=True, fill=False)
 
+    # Encabezados
     c.setFont("Helvetica-Bold", 10)
-    c.drawString(60, 530, "CANTIDAD")
-    c.drawString(150, 530, "DESCRIPCION")
-    c.drawString(450, 530, "TOTAL")
+    c.drawString(60, 545, "CANTIDAD")
+    c.drawString(150, 545, "DESCRIPCIÓN")
+    c.drawString(480, 545, "TOTAL")
 
-    # Contenido
+    # Línea separadora bajo encabezado
+    c.line(50, 540, 550, 540)
+
+    # Contenido (mejor espaciado y formato monetario adecuado)
     c.setFont("Helvetica", 10)
-    c.drawString(60, 510, f"{cantidad} UNIDADES")
-    c.drawString(150, 510, descripcion_producto.upper())
-    c.drawString(450, 510, f"Q{costo_total:.2f}")
+    c.drawString(60, 520, f"{cantidad} UNIDADES")
+    c.drawString(150, 520, descripcion_producto.upper())
+    c.drawRightString(540, 520, formato_monetario(costo_total))
 
-    # Total final
+    # Total final claramente resaltado y alineado a la derecha
     c.setFont("Helvetica-Bold", 12)
-    c.drawString(400, 420, f"TOTAL: Q{costo_total:.2f}")
+    c.drawRightString(540, 460, f"TOTAL: {formato_monetario(costo_total)}")
 
     c.save()
 

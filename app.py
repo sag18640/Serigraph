@@ -53,7 +53,7 @@ def generar_pdf(numero_usuario, material, dimensiones, cantidad, costo_total, us
     c.setFont("Helvetica-Bold", 11)
     c.drawString(430, 770, f"Cotización No. {int(time.time())%100000}")
     c.setFont("Helvetica", 10)
-    c.drawString(430, 755, f"Fecha: {time.strftime('%d/%m/%Y')}")
+    c.drawString(430, 725, f"Fecha: {time.strftime('%d/%m/%Y')}")
 
     # Línea divisoria superior
     c.line(50, 710, 560, 710)
@@ -69,37 +69,50 @@ def generar_pdf(numero_usuario, material, dimensiones, cantidad, costo_total, us
         "Si el proyecto está antes, se le notificará.\n"
         "El pago es contra entrega, salvo acuerdo contrario.\n"
         "Si cuenta con el diseño de impresión, envíelo a: jjdahud@gmail.com\n\n"
-        "Gracias por contactar a Serigráfica Internacional\n\n"
-        "Att: José David\n"
-        "Gerente General"
+        "Gracias por contactar a Zerigráfica Internacional\n\n"
+        
     )
-    text_object = c.beginText(50, 660)
+    text_object = c.beginText(50, 450)
     text_object.setLeading(13)  # Espaciado entre líneas más legible
     for linea in texto_info.split("\n"):
         text_object.textLine(linea)
     c.drawText(text_object)
+    
+    texto_info2=(
+        "Att: José David\n"
+        "Gerente General")
+    
+    text_object2 = c.beginText(250, 320)
+    text_object2.setLeading(13)  # Espaciado entre líneas más legible
+    for linea in texto_info2.split("\n"):
+        text_object2.textLine(linea)
+    c.drawText(text_object2)
 
     # Tabla de producto y precios (claramente dividida y alineada)
-    c.rect(50, 480, 500, 80, stroke=True, fill=False)
+    c.rect(50, 530, 500, 150, stroke=True, fill=False)
 
     # Encabezados
     c.setFont("Helvetica-Bold", 10)
-    c.drawString(60, 545, "CANTIDAD")
-    c.drawString(150, 545, "DESCRIPCIÓN")
-    c.drawString(480, 545, "TOTAL")
+    c.drawString(60, 665, "CANTIDAD")
+    c.drawString(150, 665, "DESCRIPCIÓN")
+    c.drawString(480, 665, "TOTAL")
 
     # Línea separadora bajo encabezado
-    c.line(50, 540, 550, 540)
+    c.line(50, 660, 550, 660)
+    c.line(145, 530, 145, 680)
+    c.line(470, 530, 470, 680)
 
     # Contenido (mejor espaciado y formato monetario adecuado)
     c.setFont("Helvetica", 10)
-    c.drawString(60, 520, f"{cantidad} UNIDADES")
-    c.drawString(150, 520, descripcion_producto.upper())
-    c.drawRightString(540, 520, formato_monetario(costo_total))
+    c.drawString(60, 650, f"{cantidad} UNIDADES")
+    c.drawString(150, 650, descripcion_producto.upper())
+    c.drawRightString(540, 650, formato_monetario(costo_total))
 
     # Total final claramente resaltado y alineado a la derecha
     c.setFont("Helvetica-Bold", 12)
-    c.drawRightString(540, 460, f"TOTAL: {formato_monetario(costo_total)}")
+    c.drawRightString(503, 515, f"P/U: {formato_monetario(costo_total/cantidad)}")
+    c.setFont("Helvetica-Bold", 12)
+    c.drawRightString(540, 500, f"TOTAL: {formato_monetario(costo_total)}")
 
     c.save()
 

@@ -26,11 +26,7 @@ TEMP_PDF_DIR = "temp_pdfs"
 if not os.path.exists(TEMP_PDF_DIR):
     os.makedirs(TEMP_PDF_DIR)
 
-# Carga diccionarios (igual que en tu código original)
-diccionario_productos = {fila[1]: fila[2] for fila in cursor.execute("SELECT * FROM products;")}
-diccionario_dimensiones = {fila[1]: fila[2] for fila in cursor.execute("SELECT * FROM dimensions_volante;")}
-diccionario_material = {fila[1]: fila[2] for fila in cursor.execute("SELECT * FROM material;")}
-materiales = {i+1: fila[1] for i, fila in enumerate(cursor.execute("SELECT * FROM material;"))}
+
 
 def generar_pdf(numero_usuario, material, ancho, cantidad, costo_total, user_number):
     file_name = f"cotizacion_{numero_usuario}_{int(time.time())}.pdf"
@@ -55,6 +51,11 @@ def descargar_pdf(filename):
 def telegram_webhook(update: Update, context):
     user_number = update.message.chat.id
     incoming_message = update.message.text.lower()
+    # Carga diccionarios (igual que en tu código original)
+    diccionario_productos = {fila[1]: fila[2] for fila in cursor.execute("SELECT * FROM products;")}
+    diccionario_dimensiones = {fila[1]: fila[2] for fila in cursor.execute("SELECT * FROM dimensions_volante;")}
+    diccionario_material = {fila[1]: fila[2] for fila in cursor.execute("SELECT * FROM material;")}
+    materiales = {i+1: fila[1] for i, fila in enumerate(cursor.execute("SELECT * FROM material;"))}
 
     if "hola" in incoming_message:
         response_message = "¡Hola! Bienvenido al cotizador de Serigraph.\n1. Cotización"
@@ -97,7 +98,7 @@ def telegram_webhook(update: Update, context):
                 user_data[user_number].update({"step": "material", "dimensiones": [dim, precio_dim]})
 
         elif step == "dimension_specific":
-            ancho_alto, precio_dim = incoming_message.split(" ")
+            ancho_alto, precio_dim = incoming_message.split("x")
             cursor.execute("INSERT INTO dimensions_volante (dimension, price) VALUES (?, ?)", (ancho_alto, precio_dim))
             conn.commit()
 
@@ -115,11 +116,11 @@ def telegram_webhook(update: Update, context):
         elif step == "cantidad":
             cantidad = int(incoming_message)
             user_data[user_number]["cantidad"] = cantidad
-            response_message = "Confirma tu pedido respondiendo 'sí' o 'no'."
+            response_message = "Confirma tu pedido respondiendo 'si' o 'no'."
             user_data[user_number]["step"] = "confirmacion"
 
         elif step == "confirmacion":
-            if "sí" in incoming_message:
+            if "si" in incoming_message:
                 costo_total = (float(user_data[user_number]['dimensiones'][1]) + float(user_data[user_number]['product'][1]) + float(user_data[user_number]['material'][1])) * user_data[user_number]['cantidad']
                 file_path = generar_pdf(user_number, user_data[user_number]["material"][0], user_data[user_number]['dimensiones'][0], user_data[user_number]["cantidad"], costo_total, user_number)
                 

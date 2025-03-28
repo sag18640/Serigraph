@@ -5,6 +5,7 @@ from telegram import Bot, Update
 from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
 import sqlite3
 import time
 
@@ -28,19 +29,73 @@ if not os.path.exists(TEMP_PDF_DIR):
 
 
 
-def generar_pdf(numero_usuario, material, ancho, cantidad, costo_total, user_number):
+def generar_pdf(numero_usuario, material, dimensiones, cantidad, costo_total, user_number, descripcion_producto):
     file_name = f"cotizacion_{numero_usuario}_{int(time.time())}.pdf"
     file_path = os.path.join(TEMP_PDF_DIR, file_name)
 
     c = canvas.Canvas(file_path, pagesize=letter)
-    c.drawString(100, 750, f"Cotización de {user_data[user_number]['product'][0]} ")
-    c.drawString(100, 730, f"Cliente: {numero_usuario}")
-    c.drawString(100, 710, f"Material: {material}")
-    c.drawString(100, 690, f"Tamaño: {ancho}")
-    c.drawString(100, 670, f"Cantidad: {cantidad}")
-    c.drawString(100, 650, f"Total estimado: Q{costo_total:.2f}")
-    c.drawString(100, 630, "Gracias por cotizar con nosotros.")
+
+    # Imagen del logo (asegúrate de tener logo.png)
+    logo = ImageReader('ruta/del/logo.png')
+    c.drawImage(logo, 50, 700, width=100, height=60)  # Posiciona el logo
+
+    # Datos empresa
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(160, 740, "Serigráfica Internacional, S.A.")
+    c.setFont("Helvetica", 10)
+    c.drawString(160, 725, "10 avenida 25-63 zona 13, Complejo industrial Aurora Bodega 13")
+    c.drawString(160, 710, "Tel: (502) 2319-2900")
+    c.drawString(160, 695, "NIT: 528440-6")
+
+    # Número de cotización y fecha
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(400, 740, f"Cotización No. {int(time.time())%100000}")
+    c.setFont("Helvetica", 10)
+    c.drawString(400, 725, f"Fecha: {time.strftime('%d/%m/%Y')}")
+
+    # Línea divisoria superior
+    c.line(50, 685, 560, 685)
+
+    # Dirigido a:
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(50, 665, f"Dirigido a: {numero_usuario}")
+
+    # Información adicional estándar
+    c.setFont("Helvetica", 9)
+    texto_info = (
+        "El tiempo de entrega es de 5 días hábiles, desde la aprobación del proyecto y arte.\n"
+        "Si el proyecto está antes, se le notificará.\n"
+        "El pago es contra entrega, salvo acuerdo contrario.\n"
+        "Si cuenta con el diseño de impresión, envíelo a: jjdahud@gmail.com\n\n"
+        "Gracias por contactar a Serigráfica Internacional\n\n"
+        "Att: José David\n"
+        "Gerente General"
+    )
+    text_object = c.beginText(50, 640)
+    for linea in texto_info.split("\n"):
+        text_object.textLine(linea)
+    c.drawText(text_object)
+
+    # Tabla de producto y precios
+    c.rect(50, 450, 510, 100)  # Rectángulo exterior
+
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(60, 530, "CANTIDAD")
+    c.drawString(150, 530, "DESCRIPCION")
+    c.drawString(450, 530, "TOTAL")
+
+    # Contenido
+    c.setFont("Helvetica", 10)
+    c.drawString(60, 510, f"{cantidad} UNIDADES")
+    c.drawString(150, 510, descripcion_producto.upper())
+    c.drawString(450, 510, f"Q{costo_total:.2f}")
+
+    # Total final
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(400, 420, f"TOTAL: Q{costo_total:.2f}")
+
     c.save()
+
     return file_path
 
 @app.route('/temp_pdfs/<path:filename>')
@@ -122,7 +177,7 @@ def telegram_webhook(update: Update, context):
         elif step == "confirmacion":
             if "si" in incoming_message:
                 costo_total = (float(user_data[user_number]['dimensiones'][1]) + float(user_data[user_number]['product'][1]) + float(user_data[user_number]['material'][1])) * user_data[user_number]['cantidad']
-                file_path = generar_pdf(user_number, user_data[user_number]["material"][0], user_data[user_number]['dimensiones'][0], user_data[user_number]["cantidad"], costo_total, user_number)
+                file_path = generar_pdf(user_number, user_data[user_number]["material"][0], user_data[user_number]['dimensiones'][0], user_data[user_number]["cantidad"], costo_total, user_number,descripcion_producto=f"{user_data[user_number]['product'][0]}, {user_data[user_number]['dimensiones'][0]}, {user_data[user_number]['material'][0]}")
                 
                 context.bot.send_document(chat_id=user_number, document=open(file_path, 'rb'), filename=os.path.basename(file_path))
                 response_message = "¡Cotización generada!"

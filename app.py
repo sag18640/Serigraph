@@ -36,7 +36,7 @@ def generar_pdf(numero_usuario, material, dimensiones, cantidad, costo_total, us
     c = canvas.Canvas(file_path, pagesize=letter)
 
     # Imagen del logo (asegúrate de tener logo.png)
-    logo = ImageReader('ruta/del/logo.png')
+    logo = ImageReader('/opt/render/project/src/seri.png')
     c.drawImage(logo, 50, 700, width=100, height=60)  # Posiciona el logo
 
     # Datos empresa

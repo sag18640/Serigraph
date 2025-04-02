@@ -82,7 +82,7 @@ def generar_pdf(client_name, material, flyer_width, cantidad, costo_total, descr
     c.save()
     return file_path
 
-# El webhook maneja cada mensaje, consultando la DB en cada llamada para contar con datos actualizados
+# El webhook se encarga de manejar cada mensaje consultando la DB en cada llamada para tener datos actualizados.
 def telegram_webhook(update: Update, context):
     user_number = update.message.chat.id
     incoming_message = update.message.text.strip()
@@ -94,7 +94,7 @@ def telegram_webhook(update: Update, context):
 
     cursor.execute("SELECT * FROM dimensions_volante;")
     dimensions = cursor.fetchall()
-    diccionario_dimensiones = {fila[1]: fila[2] for fila in dimensions}  # e.g. "8.5x11": precio
+    diccionario_dimensiones = {fila[1]: fila[2] for fila in dimensions}  # Ejemplo: "8.5x11": precio
 
     cursor.execute("SELECT * FROM material;")
     materials = cursor.fetchall()
@@ -141,7 +141,7 @@ def telegram_webhook(update: Update, context):
                     user_data[user_number]["product"] = (producto, precio_producto)
                     # Se muestran los tamaños disponibles desde la DB
                     texto = f"{producto} - Q{precio_producto}\nElige tamaño:\n"
-                    texto += "0. Agregar nuevo tamaño (Ej: 20x10 15.0)\n"
+                    texto += "0. Agregar nuevo tamaño (Ej: 20x10)\n"
                     texto += "\n".join([f"{i+1}. {dim}" for i, dim in enumerate(diccionario_dimensiones.keys())])
                     response_message = texto
                     user_data[user_number]["step"] = "dimensiones"
@@ -161,7 +161,7 @@ def telegram_webhook(update: Update, context):
             try:
                 opcion = incoming_message.strip()
                 if opcion == "0":
-                    response_message = "Ingresa el tamaño en formato anchoxalto precio (Ej: 20x10 15.0):"
+                    response_message = "Ingresa el tamaño en formato anchoxalto (Ej: 20x10):"
                     user_data[user_number]["step"] = "dimension_specific"
                     return update.message.reply_text(response_message)
                 else:
@@ -180,20 +180,16 @@ def telegram_webhook(update: Update, context):
                 response_message = "Error, ingresa un tamaño válido."
         elif step == "dimension_specific":
             try:
-                # Se espera "anchoxalto precio" (Ej: 20x10 15.0)
-                parts = incoming_message.split()
-                if len(parts) != 2:
-                    raise ValueError("Formato incorrecto")
-                dim_str = parts[0]
-                precio_dim = float(parts[1])
-                cursor.execute("INSERT INTO dimensions_volante (dimension, price) VALUES (?, ?)", (dim_str, precio_dim))
+                # Se espera solo la dimensión, sin precio
+                dim_str = incoming_message.strip()
+                cursor.execute("INSERT INTO dimensions_volante (dimension, price) VALUES (?, ?)", (dim_str, 0.0))
                 conn.commit()
-                texto = f"Tamaño: {dim_str} - Q{precio_dim}\nSelecciona material:\n"
+                texto = f"Tamaño: {dim_str} - Q0.0\nSelecciona material:\n"
                 texto += "\n".join([f"{i}. {mat}" for i, mat in materiales.items()])
                 response_message = texto
-                user_data[user_number].update({"step": "material", "dimensiones": (dim_str, precio_dim)})
+                user_data[user_number].update({"step": "material", "dimensiones": (dim_str, 0.0)})
             except Exception as e:
-                response_message = "Error al procesar el tamaño. Usa el formato (Ej: 20x10 15.0)."
+                response_message = "Error al procesar el tamaño. Usa el formato (Ej: 20x10)."
         elif step == "material":
             try:
                 material = materiales[int(incoming_message)]
@@ -218,32 +214,35 @@ def telegram_webhook(update: Update, context):
         elif step == "digital":
             if incoming_message.lower() in ["si", "sí"]:
                 user_data[user_number]["digital"] = True
-                response_message = "Ingresa el costo de impresión digital:"
-                user_data[user_number]["step"] = "digital_cost"
+                # Para digital, solo se piden costo de máquina y costo de clicks
+                response_message = "Ingresa el costo de máquina:"
+                user_data[user_number]["step"] = "digital_costo_maquina"
             elif incoming_message.lower() == "no":
                 user_data[user_number]["digital"] = False
-                user_data[user_number]["digital_cost"] = 0.0
                 user_data[user_number]["digital_clicks"] = 0.0
                 response_message = "Ingresa el costo de máquina:"
                 user_data[user_number]["step"] = "costo_maquina"
             else:
                 response_message = "Respuesta no válida, ingresa 'si' o 'no'."
-        elif step == "digital_cost":
+        elif step == "digital_costo_maquina":
             try:
-                digital_cost = float(incoming_message)
-                user_data[user_number]["digital_cost"] = digital_cost
+                machine_cost = float(incoming_message)
+                if "costos" not in user_data[user_number]:
+                    user_data[user_number]["costos"] = {}
+                user_data[user_number]["costos"]["machine"] = machine_cost
                 response_message = "Ingresa el costo de clicks:"
-                user_data[user_number]["step"] = "digital_clicks"
+                user_data[user_number]["step"] = "digital_costo_clicks"
             except:
-                response_message = "Ingresa un valor numérico para el costo de impresión digital."
-        elif step == "digital_clicks":
+                response_message = "Ingresa un valor numérico para el costo de máquina."
+        elif step == "digital_costo_clicks":
             try:
                 digital_clicks = float(incoming_message)
                 user_data[user_number]["digital_clicks"] = digital_clicks
-                response_message = "Ingresa el costo de máquina:"
-                user_data[user_number]["step"] = "costo_maquina"
+                response_message = "Confirma tu pedido respondiendo 'si' o 'no'."
+                user_data[user_number]["step"] = "confirmacion"
             except:
                 response_message = "Ingresa un valor numérico para el costo de clicks."
+        # Cadena de costos para modo no digital
         elif step == "costo_maquina":
             try:
                 machine_cost = float(incoming_message)
@@ -376,25 +375,28 @@ def telegram_webhook(update: Update, context):
                 cost_per_sheet = mat_price / 500.0
                 paper_cost = required_sheets * cost_per_sheet
 
-                costos = user_data[user_number].get("costos", {})
-                digital_cost = user_data[user_number].get("digital_cost", 0.0)
-                digital_clicks = user_data[user_number].get("digital_clicks", 0.0)
-                additional_costs = (
-                    costos.get("machine", 0.0) +
-                    costos.get("ink", 0.0) +
-                    costos.get("lamination", 0.0) +
-                    digital_clicks +
-                    costos.get("plate", 0.0) +
-                    costos.get("cortes", 0.0) +
-                    costos.get("empaque", 0.0) +
-                    costos.get("extra_laminado", 0.0) +
-                    costos.get("goma", 0.0) +
-                    costos.get("doblado", 0.0) +
-                    costos.get("troquelada", 0.0) +
-                    costos.get("encapsulado", 0.0) +
-                    costos.get("pegado", 0.0) +
-                    costos.get("barniz", 0.0)
-                )
+                # Si es digital, solo se suman el costo de máquina y el de clicks.
+                if user_data[user_number].get("digital", False):
+                    costos = user_data[user_number].get("costos", {})
+                    digital_clicks = user_data[user_number].get("digital_clicks", 0.0)
+                    additional_costs = costos.get("machine", 0.0) + digital_clicks
+                else:
+                    costos = user_data[user_number].get("costos", {})
+                    additional_costs = (
+                        costos.get("machine", 0.0) +
+                        costos.get("ink", 0.0) +
+                        costos.get("lamination", 0.0) +
+                        costos.get("plate", 0.0) +
+                        costos.get("cortes", 0.0) +
+                        costos.get("empaque", 0.0) +
+                        costos.get("extra_laminado", 0.0) +
+                        costos.get("goma", 0.0) +
+                        costos.get("doblado", 0.0) +
+                        costos.get("troquelada", 0.0) +
+                        costos.get("encapsulado", 0.0) +
+                        costos.get("pegado", 0.0) +
+                        costos.get("barniz", 0.0)
+                    )
                 total_cost = paper_cost + additional_costs
                 final_cost = (total_cost * 1.5) * 1.17
                 client_name = user_data[user_number].get("client_name", "Cliente")

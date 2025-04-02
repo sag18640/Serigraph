@@ -34,7 +34,7 @@ def generar_pdf(client_name, material, flyer_width, cantidad, costo_total, descr
     """
     Genera un PDF de cotización con información esencial:
       - Nombre del cliente
-      - Producto, formato y material
+      - Producto, tamaño y material
       - Cantidad cotizada y costo final
       - Datos de la empresa
     """
@@ -82,19 +82,19 @@ def generar_pdf(client_name, material, flyer_width, cantidad, costo_total, descr
     c.save()
     return file_path
 
-# El webhook maneja cada mensaje, realizando las consultas a la DB para tener información actualizada
+# El webhook maneja cada mensaje, realizando las consultas a la DB en cada llamada
 def telegram_webhook(update: Update, context):
     user_number = update.message.chat.id
     incoming_message = update.message.text.strip()
 
-    # Se realizan las consultas en cada llamada para contar con datos actualizados
+    # Consultas actualizadas
     cursor.execute("SELECT * FROM products;")
     products = cursor.fetchall()
     diccionario_productos = {fila[1]: fila[2] for fila in products}
 
     cursor.execute("SELECT * FROM dimensions_volante;")
     dimensions = cursor.fetchall()
-    diccionario_dimensiones = {fila[1]: fila[2] for fila in dimensions}
+    diccionario_dimensiones = {fila[1]: fila[2] for fila in dimensions}  # clave: "8.5x11", valor: precio (u otro dato)
 
     cursor.execute("SELECT * FROM material;")
     materials = cursor.fetchall()
@@ -103,18 +103,19 @@ def telegram_webhook(update: Update, context):
 
     # Flujo de conversación
     if incoming_message.lower() == "hola":
-        response_message = "¡Hola! Por favor ingresa tu nombre de cliente:"
+        response_message = "¡Hola! Ingresa tu nombre de cliente:"
         user_data[user_number] = {"step": "ask_nombre"}
     elif user_number in user_data:
         step = user_data[user_number]["step"]
         if step == "ask_nombre":
             client_name = incoming_message.strip()
             user_data[user_number]["client_name"] = client_name
-            response_message = f"Bienvenido {client_name}.\n1. Cotización"
+            # Se saluda sin incluir el nombre en el mensaje
+            response_message = "Bienvenido\n1. Cotización"
             user_data[user_number]["step"] = "menu"
         elif step == "menu":
             if incoming_message == "1":
-                # Se muestran los productos actuales y se da opción de agregar uno nuevo
+                # Se muestran los productos actuales y opción para agregar uno nuevo
                 texto = "Selecciona el producto:\n"
                 texto += "0. Agregar nuevo producto\n"
                 texto += "\n".join([f"{i+1}. {prod}" for i, prod in enumerate(diccionario_productos.keys())])
@@ -129,7 +130,7 @@ def telegram_webhook(update: Update, context):
                 response_message = "Ingresa una opción válida."
                 return update.message.reply_text(response_message)
             if opcion == 0:
-                response_message = "Ingresa el nombre del nuevo producto y su precio separados por un espacio (Ej: producto 15.0):"
+                response_message = "Ingresa el nombre del nuevo producto:"
                 user_data[user_number]["step"] = "nuevo_producto"
             else:
                 product_keys = list(diccionario_productos.keys())
@@ -139,68 +140,62 @@ def telegram_webhook(update: Update, context):
                     producto = product_keys[opcion - 1]
                     precio_producto = diccionario_productos[producto]
                     user_data[user_number]["product"] = (producto, precio_producto)
-                    response_message = ("Selecciona el formato:\n"
-                                        "1. Carta (8.5x11)\n"
-                                        "2. Oficio (8.5x13)\n"
-                                        "3. Media Carta (8.5x5.5)\n"
-                                        "4. Medio Oficio (8.5x6.5)\n"
-                                        "5. Otro")
-                    user_data[user_number]["step"] = "formato"
+                    # Se muestra la lista de tamaños desde la DB
+                    texto = f"{producto} - Q{precio_producto}\nElige tamaño:\n"
+                    texto += "0. Agregar nuevo tamaño (Ej: 20x10 15.0)\n"
+                    texto += "\n".join([f"{i+1}. {dim}" for i, dim in enumerate(diccionario_dimensiones.keys())])
+                    response_message = texto
+                    user_data[user_number]["step"] = "dimensiones"
         elif step == "nuevo_producto":
+            # Solo se ingresa el nombre del producto, se inserta con precio 0.0
+            new_product_name = incoming_message.strip()
+            cursor.execute("INSERT INTO products (product, price) VALUES (?, ?)", (new_product_name, 0.0))
+            conn.commit()
+            response_message = f"Producto '{new_product_name}' agregado con éxito.\nSelecciona el producto:\n"
+            cursor.execute("SELECT * FROM products;")
+            products = cursor.fetchall()
+            diccionario_productos = {fila[1]: fila[2] for fila in products}
+            texto = "0. Agregar nuevo producto\n"
+            texto += "\n".join([f"{i+1}. {prod}" for i, prod in enumerate(diccionario_productos.keys())])
+            response_message += texto
+            user_data[user_number]["step"] = "productos"
+        elif step == "dimensiones":
             try:
-                parts = incoming_message.split()
-                new_product_name = " ".join(parts[:-1])
-                new_product_price = float(parts[-1])
-                cursor.execute("INSERT INTO products (product, price) VALUES (?, ?)", (new_product_name, new_product_price))
-                conn.commit()
-                response_message = f"Producto '{new_product_name}' agregado con éxito.\nSelecciona el producto:\n"
-                # Se vuelve a listar los productos actualizados
-                cursor.execute("SELECT * FROM products;")
-                products = cursor.fetchall()
-                diccionario_productos = {fila[1]: fila[2] for fila in products}
-                texto = "0. Agregar nuevo producto\n"
-                texto += "\n".join([f"{i+1}. {prod}" for i, prod in enumerate(diccionario_productos.keys())])
-                response_message += texto
-                user_data[user_number]["step"] = "productos"
+                opcion = incoming_message.strip()
+                if opcion == "0":
+                    response_message = "Ingresa el tamaño en formato anchoxalto precio (Ej: 20x10 15.0):"
+                    user_data[user_number]["step"] = "dimension_specific"
+                    return update.message.reply_text(response_message)
+                else:
+                    opcion_int = int(opcion)
+                    dims_list = list(diccionario_dimensiones.keys())
+                    if opcion_int > len(dims_list):
+                        response_message = "Tamaño no válido."
+                    else:
+                        dim = dims_list[opcion_int - 1]
+                        precio_dim = diccionario_dimensiones[dim]
+                        texto = f"Tamaño: {dim} - Q{precio_dim}\nSelecciona material:\n"
+                        texto += "\n".join([f"{i}. {mat}" for i, mat in materiales.items()])
+                        response_message = texto
+                        user_data[user_number].update({"step": "material", "dimensiones": (dim, precio_dim)})
             except Exception as e:
-                response_message = "Error al agregar producto. Asegúrate de ingresar el nombre y precio (Ej: producto 15.0)."
-        elif step == "formato":
+                response_message = "Error, ingresa un tamaño válido."
+        elif step == "dimension_specific":
             try:
-                opcion = int(incoming_message)
-            except:
-                response_message = "Ingresa una opción válida (1-5)."
-                return update.message.reply_text(response_message)
-            if opcion == 1:
-                formato = ("Carta", 8.5, 11)
-            elif opcion == 2:
-                formato = ("Oficio", 8.5, 13)
-            elif opcion == 3:
-                formato = ("Media Carta", 8.5, 5.5)
-            elif opcion == 4:
-                formato = ("Medio Oficio", 8.5, 6.5)
-            elif opcion == 5:
-                response_message = "Ingresa las dimensiones en formato anchoxalto (Ej: 20x10):"
-                user_data[user_number]["step"] = "formato_personalizado"
-                return update.message.reply_text(response_message)
-            else:
-                response_message = "Opción no válida."
-                return update.message.reply_text(response_message)
-            user_data[user_number]["formato"] = formato
-            texto = f"Formato seleccionado: {formato[0]} ({formato[1]}x{formato[2]})\nSelecciona material:\n"
-            texto += "\n".join([f"{i}. {mat}" for i, mat in materiales.items()])
-            response_message = texto
-            user_data[user_number]["step"] = "material"
-        elif step == "formato_personalizado":
-            try:
-                ancho, alto = incoming_message.lower().split("x")
-                formato = ("Personalizado", float(ancho), float(alto))
-                user_data[user_number]["formato"] = formato
-                texto = f"Formato seleccionado: Personalizado ({formato[1]}x{formato[2]})\nSelecciona material:\n"
+                # Se espera entrada en el formato "anchoxalto precio" (Ej: 20x10 15.0)
+                parts = incoming_message.split()
+                if len(parts) != 2:
+                    raise ValueError("Formato incorrecto")
+                dim_str = parts[0]
+                precio_dim = float(parts[1])
+                cursor.execute("INSERT INTO dimensions_volante (dimension, price) VALUES (?, ?)", (dim_str, precio_dim))
+                conn.commit()
+                texto = f"Tamaño: {dim_str} - Q{precio_dim}\nSelecciona material:\n"
                 texto += "\n".join([f"{i}. {mat}" for i, mat in materiales.items()])
                 response_message = texto
-                user_data[user_number]["step"] = "material"
+                user_data[user_number].update({"step": "material", "dimensiones": (dim_str, precio_dim)})
             except Exception as e:
-                response_message = "Formato incorrecto. Intenta nuevamente, ej: 20x10"
+                response_message = "Error al procesar el tamaño. Asegúrate de usar el formato correcto (Ej: 20x10 15.0)."
         elif step == "material":
             try:
                 material = materiales[int(incoming_message)]
@@ -277,8 +272,16 @@ def telegram_webhook(update: Update, context):
         elif step == "confirmacion":
             if "si" in incoming_message.lower():
                 cantidad = user_data[user_number]["cantidad"]
-                formato = user_data[user_number]["formato"]
-                flyer_area = formato[1] * formato[2]
+                # Se procesa el tamaño seleccionado desde la DB
+                dim_str, precio_dim = user_data[user_number]["dimensiones"]
+                try:
+                    flyer_dimensions = dim_str.lower().split("x")
+                    flyer_width = float(flyer_dimensions[0])
+                    flyer_height = float(flyer_dimensions[1])
+                except:
+                    flyer_width, flyer_height = (0, 0)
+                flyer_area = flyer_width * flyer_height
+
                 material, mat_price, mat_medida = user_data[user_number]["material"]
                 try:
                     mat_dims = mat_medida.split("x")
@@ -299,10 +302,9 @@ def telegram_webhook(update: Update, context):
                 total_cost = paper_cost + additional_costs
                 final_cost = (total_cost * 1.5) * 1.17
                 client_name = user_data[user_number].get("client_name", "Cliente")
-                descripcion_producto = f"{user_data[user_number]['product'][0]}, Formato: {formato[0]}, Material: {user_data[user_number]['material'][0]}"
+                descripcion_producto = f"{user_data[user_number]['product'][0]}, Tamaño: {dim_str}, Material: {user_data[user_number]['material'][0]}"
                 
-                # Se genera el PDF con datos esenciales: cliente, producto, cantidad y costo final
-                file_path = generar_pdf(client_name, user_data[user_number]["material"][0], formato[1], cantidad, final_cost, descripcion_producto)
+                file_path = generar_pdf(client_name, user_data[user_number]["material"][0], flyer_width, cantidad, final_cost, descripcion_producto)
                 context.bot.send_document(chat_id=user_number, document=open(file_path, 'rb'), filename=os.path.basename(file_path))
                 response_message = "¡Cotización generada!"
                 del user_data[user_number]

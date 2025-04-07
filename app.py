@@ -354,7 +354,7 @@ def telegram_webhook(update: Update, context):
                 if current_index < len(additional_list):
                     user_data[user_number]["current_charge_index"] = current_index
                     charge = additional_list[current_index]
-                    response_message = f"Ingrese el precio para {charge[1]} ({charge[2]}): (valor >= 0)"
+                    response_message = f"Ingrese el precio para {charge[1]} ({charge[2]}): "
                 else:
                     response_message = "Todos los cargos adicionales han sido registrados. Confirma tu pedido respondiendo 'si' o 'no'."
                     user_data[user_number]["step"] = "confirmacion"
@@ -416,10 +416,13 @@ def telegram_webhook(update: Update, context):
                 response_message = "¡Cotización generada!"
                 logging.info(f"Cotización generada para {client_name} en carpeta {quote_folder}")
                 del user_data[user_number]
-            else:
+            elif "no" in incoming_message.lower():
                 response_message = "Cotización cancelada."
                 logging.info(f"Cotización cancelada por {user_number}")
                 del user_data[user_number]
+            else:
+                response_message = "Debes ingresar 'si' ó 'no'."
+                logging.info(f"Cotización cancelada por {user_number}")
         else:
             response_message = "No te entendí. Intenta de nuevo."
     else:

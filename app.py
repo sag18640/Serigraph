@@ -13,7 +13,9 @@ import sqlite3
 load_dotenv()
 app = Flask(__name__)
 
-# Conexión a la base de datos (se asume que las tablas "products", "dimensions_volante" y "material" existen)
+# Conexión a la base de datos.
+# Se asume que las tablas "products", "dimensions_volante", "material" y "additional_charges" existen.
+# La tabla additional_charges se define sin el campo precio, ya que éste se solicitará por cada cotización.
 conn = sqlite3.connect('/var/www/db_serigraph/seri.db', check_same_thread=False)
 cursor = conn.cursor()
 
@@ -52,7 +54,7 @@ def generar_pdf(client_name, material, flyer_width, cantidad, costo_total, descr
     c.drawString(200, 740, "Tel: (502) 2319-2900")
     c.drawString(200, 725, "NIT: 528440-6")
     c.setFont("Helvetica-Bold", 11)
-    c.drawString(430, 770, f"Cotización No. {int(time.time())%100000}")
+    c.drawString(430, 770, f"Cotización No. {int(time.time()) % 100000}")
     c.setFont("Helvetica", 10)
     c.drawString(430, 725, f"Fecha: {time.strftime('%d/%m/%Y')}")
     c.line(50, 710, 560, 710)
@@ -82,19 +84,32 @@ def generar_pdf(client_name, material, flyer_width, cantidad, costo_total, descr
     c.save()
     return file_path
 
-# El webhook se encarga de manejar cada mensaje y consulta la DB en cada llamada
+# (Las funciones de administración de cobros adicionales para el menú de edición permanecen)
+def agregar_cobro(nombre, descripcion):
+    cursor.execute("INSERT INTO additional_charges (name, description) VALUES (?, ?)", (nombre, descripcion))
+    conn.commit()
+
+def eliminar_cobro(cobro_id):
+    cursor.execute("DELETE FROM additional_charges WHERE id=?", (cobro_id,))
+    conn.commit()
+
+def obtener_cobros():
+    cursor.execute("SELECT id, name, description FROM additional_charges")
+    return cursor.fetchall()
+
+# Flujo del webhook de Telegram.
 def telegram_webhook(update: Update, context):
     user_number = update.message.chat.id
     incoming_message = update.message.text.strip()
 
-    # Consultas actualizadas
+    # Consultas actualizadas de productos, dimensiones y materiales.
     cursor.execute("SELECT * FROM products;")
     products = cursor.fetchall()
     diccionario_productos = {fila[1]: fila[2] for fila in products}
 
     cursor.execute("SELECT * FROM dimensions_volante;")
     dimensions = cursor.fetchall()
-    diccionario_dimensiones = {fila[1]: fila[2] for fila in dimensions}  # Ej: "8.5x11": precio
+    diccionario_dimensiones = {fila[1]: fila[2] for fila in dimensions}
 
     cursor.execute("SELECT * FROM material;")
     materials = cursor.fetchall()
@@ -103,14 +118,15 @@ def telegram_webhook(update: Update, context):
 
     # Flujo de conversación
     if incoming_message.lower() == "hola":
-        response_message = "¡Hola! Ingresa tu nombre de cliente:"
+        response_message = ("¡Hola! Ingresa tu nombre de cliente:\n"
+                            "También puedes enviar '2' en el menú principal para editar cobros adicionales.")
         user_data[user_number] = {"step": "ask_nombre"}
     elif user_number in user_data:
         step = user_data[user_number]["step"]
         if step == "ask_nombre":
             client_name = incoming_message.strip()
             user_data[user_number]["client_name"] = client_name
-            response_message = "Bienvenido\n1. Cotización"
+            response_message = "Bienvenido\n1. Cotización\n2. Editar cobros adicionales"
             user_data[user_number]["step"] = "menu"
         elif step == "menu":
             if incoming_message == "1":
@@ -119,8 +135,60 @@ def telegram_webhook(update: Update, context):
                 texto += "\n".join([f"{i+1}. {prod}" for i, prod in enumerate(diccionario_productos.keys())])
                 response_message = texto
                 user_data[user_number]["step"] = "productos"
+            elif incoming_message == "2":
+                response_message = ("Has seleccionado editar cobros adicionales:\n"
+                                    "1. Agregar cobro adicional\n"
+                                    "2. Eliminar cobro adicional\n"
+                                    "3. Ver cobros adicionales existentes")
+                user_data[user_number]["step"] = "admin_charges"
             else:
-                response_message = "Opción no válida. Envía '1' para Cotización."
+                response_message = "Opción no válida. Envía '1' para Cotización o '2' para Editar cobros adicionales."
+        elif step == "admin_charges":
+            if incoming_message == "1":
+                response_message = ("Ingresa el nombre y la descripción separados por coma.\nEj: Pegamento, Especial")
+                user_data[user_number]["step"] = "add_charge"
+            elif incoming_message == "2":
+                charges = obtener_cobros()
+                if charges:
+                    response_message = "Selecciona el ID del cobro a eliminar:\n"
+                    for charge in charges:
+                        response_message += f"{charge[0]}. {charge[1]} - {charge[2]}\n"
+                else:
+                    response_message = "No hay cobros adicionales registrados."
+                user_data[user_number]["step"] = "delete_charge"
+            elif incoming_message == "3":
+                charges = obtener_cobros()
+                if charges:
+                    response_message = "Cobros actuales:\n"
+                    for charge in charges:
+                        response_message += f"{charge[1]} ({charge[2]})\n"
+                else:
+                    response_message = "No hay cobros adicionales registrados."
+                response_message += "\n\nMenú:\n1. Cotización\n2. Editar cobros adicionales"
+                user_data[user_number]["step"] = "menu"
+            else:
+                response_message = "Opción no válida en administración de cobros. Intenta de nuevo."
+        elif step == "add_charge":
+            try:
+                parts = incoming_message.split(",")
+                if len(parts) < 2:
+                    raise ValueError("Faltan datos")
+                nombre = parts[0].strip()
+                descripcion = parts[1].strip()
+                agregar_cobro(nombre, descripcion)
+                response_message = "Cobro agregado correctamente."
+            except Exception as e:
+                response_message = "Formato incorrecto. Intenta de nuevo. Ej: Pegamento, Especial"
+            user_data[user_number]["step"] = "menu"
+        elif step == "delete_charge":
+            try:
+                charge_id = int(incoming_message)
+                eliminar_cobro(charge_id)
+                response_message = "Cobro eliminado correctamente."
+            except Exception as e:
+                response_message = "Opción inválida. Intenta de nuevo."
+            user_data[user_number]["step"] = "menu"
+        # Flujo de cotización:
         elif step == "productos":
             try:
                 opcion = int(incoming_message)
@@ -178,7 +246,6 @@ def telegram_webhook(update: Update, context):
                 response_message = "Error, ingresa un tamaño válido."
         elif step == "dimension_specific":
             try:
-                # Se ingresa solo la dimensión; se inserta con precio 0.0 por defecto
                 dim_str = incoming_message.strip()
                 cursor.execute("INSERT INTO dimensions_volante (dimension, price) VALUES (?, ?)", (dim_str, 0.0))
                 conn.commit()
@@ -209,235 +276,47 @@ def telegram_webhook(update: Update, context):
                 user_data[user_number]["step"] = "digital"
             except:
                 response_message = "Ingresa una cantidad válida."
+        # Nuevo flujo: tras la respuesta digital se recorren los cargos adicionales definidos en la DB.
         elif step == "digital":
-            if incoming_message.lower() in ["si", "sí"]:
-                user_data[user_number]["digital"] = True
-                if "costos" not in user_data[user_number]:
-                    user_data[user_number]["costos"] = {}
-                response_message = "Ingresa el costo de máquina:"
-                user_data[user_number]["step"] = "digital_costo_maquina"
-            elif incoming_message.lower() == "no":
-                user_data[user_number]["digital"] = False
-                response_message = "Ingresa el costo de máquina:"
-                user_data[user_number]["step"] = "costo_maquina"
+            if incoming_message.lower() in ["si", "sí", "no"]:
+                user_data[user_number]["digital"] = (incoming_message.lower() in ["si", "sí"])
+                # Consultamos los cargos adicionales definidos en la DB.
+                cursor.execute("SELECT id, name, description FROM additional_charges")
+                additional_list = cursor.fetchall()
+                user_data[user_number]["additional_list"] = additional_list
+                user_data[user_number]["current_charge_index"] = 0
+                user_data[user_number]["additional_values"] = []
+                if additional_list:
+                    charge = additional_list[0]
+                    response_message = f"Ingrese el precio para {charge[1]} ({charge[2]}):"
+                    user_data[user_number]["step"] = "ask_additional"
+                else:
+                    response_message = "No hay cargos adicionales. Confirma tu pedido respondiendo 'si' o 'no'."
+                    user_data[user_number]["step"] = "confirmacion"
             else:
                 response_message = "Respuesta no válida, ingresa 'si' o 'no'."
-        # Rama para modo digital (no se pide costo de placas)
-        elif step == "digital_costo_maquina":
+        # Nuevo paso para preguntar por cada cargo adicional.
+        elif step == "ask_additional":
             try:
-                machine_cost = float(incoming_message)
-                user_data[user_number]["costos"]["machine"] = machine_cost
-                response_message = "Ingresa el costo de tinta:"
-                user_data[user_number]["step"] = "digital_costo_tinta"
+                price = float(incoming_message)
+                additional_values = user_data[user_number].get("additional_values", [])
+                additional_values.append(price)
+                user_data[user_number]["additional_values"] = additional_values
+                current_index = user_data[user_number]["current_charge_index"] + 1
+                additional_list = user_data[user_number]["additional_list"]
+                if current_index < len(additional_list):
+                    user_data[user_number]["current_charge_index"] = current_index
+                    charge = additional_list[current_index]
+                    response_message = f"Ingrese el precio para {charge[1]} ({charge[2]}):"
+                else:
+                    response_message = "Todos los cargos adicionales han sido registrados. Confirma tu pedido respondiendo 'si' o 'no'."
+                    user_data[user_number]["step"] = "confirmacion"
             except:
-                response_message = "Ingresa un valor numérico para el costo de máquina."
-        elif step == "digital_costo_tinta":
-            try:
-                tinta_cost = float(incoming_message)
-                user_data[user_number]["costos"]["ink"] = tinta_cost
-                response_message = "Ingresa el costo de laminado:"
-                user_data[user_number]["step"] = "digital_costo_laminado"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de tinta."
-        elif step == "digital_costo_laminado":
-            try:
-                laminado_cost = float(incoming_message)
-                user_data[user_number]["costos"]["lamination"] = laminado_cost
-                response_message = "Ingresa el costo de cortes:"
-                user_data[user_number]["step"] = "digital_costo_cortes"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de laminado."
-        elif step == "digital_costo_cortes":
-            try:
-                cortes_cost = float(incoming_message)
-                user_data[user_number]["costos"]["cortes"] = cortes_cost
-                response_message = "Ingresa el costo de empaque:"
-                user_data[user_number]["step"] = "digital_costo_empaque"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de cortes."
-        elif step == "digital_costo_empaque":
-            try:
-                empaque_cost = float(incoming_message)
-                user_data[user_number]["costos"]["empaque"] = empaque_cost
-                response_message = "Ingresa el costo de laminado extra:"
-                user_data[user_number]["step"] = "digital_costo_extra_laminado"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de empaque."
-        elif step == "digital_costo_extra_laminado":
-            try:
-                extra_laminado_cost = float(incoming_message)
-                user_data[user_number]["costos"]["extra_laminado"] = extra_laminado_cost
-                response_message = "Ingresa el costo de goma:"
-                user_data[user_number]["step"] = "digital_costo_goma"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de laminado extra."
-        elif step == "digital_costo_goma":
-            try:
-                goma_cost = float(incoming_message)
-                user_data[user_number]["costos"]["goma"] = goma_cost
-                response_message = "Ingresa el costo de doblado:"
-                user_data[user_number]["step"] = "digital_costo_doblado"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de goma."
-        elif step == "digital_costo_doblado":
-            try:
-                doblado_cost = float(incoming_message)
-                user_data[user_number]["costos"]["doblado"] = doblado_cost
-                response_message = "Ingresa el costo de troquelada:"
-                user_data[user_number]["step"] = "digital_costo_troquelada"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de doblado."
-        elif step == "digital_costo_troquelada":
-            try:
-                troquelada_cost = float(incoming_message)
-                user_data[user_number]["costos"]["troquelada"] = troquelada_cost
-                response_message = "Ingresa el costo de encapsulado:"
-                user_data[user_number]["step"] = "digital_costo_encapsulado"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de troquelada."
-        elif step == "digital_costo_encapsulado":
-            try:
-                encapsulado_cost = float(incoming_message)
-                user_data[user_number]["costos"]["encapsulado"] = encapsulado_cost
-                response_message = "Ingresa el costo de pegado:"
-                user_data[user_number]["step"] = "digital_costo_pegado"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de encapsulado."
-        elif step == "digital_costo_pegado":
-            try:
-                pegado_cost = float(incoming_message)
-                user_data[user_number]["costos"]["pegado"] = pegado_cost
-                response_message = "Ingresa el costo de barniz:"
-                user_data[user_number]["step"] = "digital_costo_barniz"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de pegado."
-        elif step == "digital_costo_barniz":
-            try:
-                barniz_cost = float(incoming_message)
-                user_data[user_number]["costos"]["barniz"] = barniz_cost
-                response_message = "Ingresa el costo de clicks:"
-                user_data[user_number]["step"] = "digital_costo_clicks"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de barniz."
-        elif step == "digital_costo_clicks":
-            try:
-                digital_clicks = float(incoming_message)
-                user_data[user_number]["digital_clicks"] = digital_clicks
-                response_message = "Confirma tu pedido respondiendo 'si' o 'no'."
-                user_data[user_number]["step"] = "confirmacion"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de clicks."
-        # Rama para modo no digital (se pregunta costo de placas)
-        elif step == "costo_maquina":
-            try:
-                machine_cost = float(incoming_message)
-                if "costos" not in user_data[user_number]:
-                    user_data[user_number]["costos"] = {}
-                user_data[user_number]["costos"]["machine"] = machine_cost
-                response_message = "Ingresa el costo de tinta:"
-                user_data[user_number]["step"] = "costo_tinta"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de máquina."
-        elif step == "costo_tinta":
-            try:
-                tinta_cost = float(incoming_message)
-                user_data[user_number]["costos"]["ink"] = tinta_cost
-                response_message = "Ingresa el costo de laminado:"
-                user_data[user_number]["step"] = "costo_laminado"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de tinta."
-        elif step == "costo_laminado":
-            try:
-                laminado_cost = float(incoming_message)
-                user_data[user_number]["costos"]["lamination"] = laminado_cost
-                response_message = "Ingresa el costo de placas:"
-                user_data[user_number]["step"] = "costo_placas"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de laminado."
-        elif step == "costo_placas":
-            try:
-                placas_cost = float(incoming_message)
-                user_data[user_number]["costos"]["plate"] = placas_cost
-                response_message = "Ingresa el costo de cortes:"
-                user_data[user_number]["step"] = "costo_cortes"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de placas."
-        elif step == "costo_cortes":
-            try:
-                cortes_cost = float(incoming_message)
-                user_data[user_number]["costos"]["cortes"] = cortes_cost
-                response_message = "Ingresa el costo de empaque:"
-                user_data[user_number]["step"] = "costo_empaque"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de cortes."
-        elif step == "costo_empaque":
-            try:
-                empaque_cost = float(incoming_message)
-                user_data[user_number]["costos"]["empaque"] = empaque_cost
-                response_message = "Ingresa el costo de laminado extra:"
-                user_data[user_number]["step"] = "costo_extra_laminado"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de empaque."
-        elif step == "costo_extra_laminado":
-            try:
-                extra_laminado_cost = float(incoming_message)
-                user_data[user_number]["costos"]["extra_laminado"] = extra_laminado_cost
-                response_message = "Ingresa el costo de goma:"
-                user_data[user_number]["step"] = "costo_goma"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de laminado extra."
-        elif step == "costo_goma":
-            try:
-                goma_cost = float(incoming_message)
-                user_data[user_number]["costos"]["goma"] = goma_cost
-                response_message = "Ingresa el costo de doblado:"
-                user_data[user_number]["step"] = "costo_doblado"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de goma."
-        elif step == "costo_doblado":
-            try:
-                doblado_cost = float(incoming_message)
-                user_data[user_number]["costos"]["doblado"] = doblado_cost
-                response_message = "Ingresa el costo de troquelada:"
-                user_data[user_number]["step"] = "costo_troquelada"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de doblado."
-        elif step == "costo_troquelada":
-            try:
-                troquelada_cost = float(incoming_message)
-                user_data[user_number]["costos"]["troquelada"] = troquelada_cost
-                response_message = "Ingresa el costo de encapsulado:"
-                user_data[user_number]["step"] = "costo_encapsulado"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de troquelada."
-        elif step == "costo_encapsulado":
-            try:
-                encapsulado_cost = float(incoming_message)
-                user_data[user_number]["costos"]["encapsulado"] = encapsulado_cost
-                response_message = "Ingresa el costo de pegado:"
-                user_data[user_number]["step"] = "costo_pegado"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de encapsulado."
-        elif step == "costo_pegado":
-            try:
-                pegado_cost = float(incoming_message)
-                user_data[user_number]["costos"]["pegado"] = pegado_cost
-                response_message = "Ingresa el costo de barniz:"
-                user_data[user_number]["step"] = "costo_barniz"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de pegado."
-        elif step == "costo_barniz":
-            try:
-                barniz_cost = float(incoming_message)
-                user_data[user_number]["costos"]["barniz"] = barniz_cost
-                response_message = "Confirma tu pedido respondiendo 'si' o 'no'."
-                user_data[user_number]["step"] = "confirmacion"
-            except:
-                response_message = "Ingresa un valor numérico para el costo de barniz."
+                response_message = "Ingresa un valor numérico para el precio."
         elif step == "confirmacion":
             if "si" in incoming_message.lower():
                 cantidad = user_data[user_number]["cantidad"]
-                # Procesamos la dimensión seleccionada desde la DB
+                # Procesamos la dimensión seleccionada.
                 dim_str, precio_dim = user_data[user_number]["dimensiones"]
                 try:
                     flyer_dimensions = dim_str.lower().split("x")
@@ -460,42 +339,11 @@ def telegram_webhook(update: Update, context):
                 cost_per_sheet = mat_price / 500.0
                 paper_cost = required_sheets * cost_per_sheet
 
-                if user_data[user_number].get("digital", False):
-                    digital_costs = user_data[user_number]["costos"]
-                    additional_costs = (
-                        digital_costs.get("machine", 0.0) +
-                        digital_costs.get("ink", 0.0) +
-                        digital_costs.get("lamination", 0.0) +
-                        digital_costs.get("cortes", 0.0) +
-                        digital_costs.get("empaque", 0.0) +
-                        digital_costs.get("extra_laminado", 0.0) +
-                        digital_costs.get("goma", 0.0) +
-                        digital_costs.get("doblado", 0.0) +
-                        digital_costs.get("troquelada", 0.0) +
-                        digital_costs.get("encapsulado", 0.0) +
-                        digital_costs.get("pegado", 0.0) +
-                        digital_costs.get("barniz", 0.0) +
-                        user_data[user_number].get("digital_clicks", 0.0)
-                    )
-                else:
-                    non_digital_costs = user_data[user_number]["costos"]
-                    additional_costs = (
-                        non_digital_costs.get("machine", 0.0) +
-                        non_digital_costs.get("ink", 0.0) +
-                        non_digital_costs.get("lamination", 0.0) +
-                        non_digital_costs.get("plate", 0.0) +
-                        non_digital_costs.get("cortes", 0.0) +
-                        non_digital_costs.get("empaque", 0.0) +
-                        non_digital_costs.get("extra_laminado", 0.0) +
-                        non_digital_costs.get("goma", 0.0) +
-                        non_digital_costs.get("doblado", 0.0) +
-                        non_digital_costs.get("troquelada", 0.0) +
-                        non_digital_costs.get("encapsulado", 0.0) +
-                        non_digital_costs.get("pegado", 0.0) +
-                        non_digital_costs.get("barniz", 0.0)
-                    )
+                # Suma de los precios ingresados para cada cargo adicional.
+                additional_costs = sum(user_data[user_number].get("additional_values", []))
                 total_cost = paper_cost + additional_costs
                 final_cost = (total_cost * 1.5) * 1.17
+
                 client_name = user_data[user_number].get("client_name", "Cliente")
                 descripcion_producto = f"{user_data[user_number]['product'][0]}, Tamaño: {dim_str}, Material: {user_data[user_number]['material'][0]}"
 

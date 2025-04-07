@@ -118,8 +118,7 @@ def telegram_webhook(update: Update, context):
 
     # Flujo de conversación
     if incoming_message.lower() == "hola":
-        response_message = ("¡Hola! Ingresa tu nombre de cliente:\n"
-                            "También puedes enviar '2' en el menú principal para editar cobros adicionales.")
+        response_message = ("¡Hola! Ingresa tu nombre de cliente:")
         user_data[user_number] = {"step": "ask_nombre"}
     elif user_number in user_data:
         step = user_data[user_number]["step"]

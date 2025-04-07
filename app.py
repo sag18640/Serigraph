@@ -40,6 +40,14 @@ TEMP_PDF_DIR = "temp_pdfs"
 if not os.path.exists(TEMP_PDF_DIR):
     os.makedirs(TEMP_PDF_DIR)
 
+DIMENSION_ALIASES = {
+    "carta": (8.5, 11),        # 8.5" x 11"
+    "oficio": (8.5, 14),       # 8.5" x 14"
+    "media carta": (8.5, 5.5),  # 8.5" x 5.5"
+    "medio oficio": (8.5, 7), # 8.5" x 7"
+    # Agrega aquí más equivalencias si lo requieres...
+}
+
 def formato_monetario(valor):
     return f"Q{valor:,.2f}"
 
@@ -111,6 +119,26 @@ def obtener_cobros():
     cursor.execute("SELECT id, name, description FROM additional_charges")
     return cursor.fetchall()
 
+def parse_dimension(dim_str: str) -> (float, float):
+    """
+    Devuelve (width, height) en cm, a partir de un string como '20x30' o 'Carta'.
+    Si no se puede parsear, devuelve (0,0).
+    """
+    dim_str = dim_str.lower().strip()
+    # 1) Si contiene 'x', intentamos parsear como numérico
+    if "x" in dim_str:
+        try:
+            parts = dim_str.split("x")
+            w = float(parts[0])
+            h = float(parts[1])
+            return (w, h) if (w > 0 and h > 0) else (0, 0)
+        except:
+            return (0, 0)
+    # 2) Si no tiene 'x', buscamos en el diccionario de alias
+    if dim_str in DIMENSION_ALIASES:
+        return DIMENSION_ALIASES[dim_str]
+    # 3) Fallback
+    return (0, 0)
 # Flujo del webhook de Telegram.
 def telegram_webhook(update: Update, context):
     user_number = update.message.chat.id
@@ -364,30 +392,41 @@ def telegram_webhook(update: Update, context):
             if "si" in incoming_message.lower():
                 cantidad = user_data[user_number]["cantidad"]
 
-                # Procesamos la dimensión seleccionada.
-                dim_str, precio_dim = user_data[user_number]["dimensiones"]
-                try:
-                    flyer_dimensions = dim_str.lower().split("x")
-                    flyer_width = float(flyer_dimensions[0])
-                    flyer_height = float(flyer_dimensions[1])
-                    if flyer_width <= 0 or flyer_height <= 0:
-                        raise ValueError("Dimensiones inválidas")
-                except:
-                    flyer_width, flyer_height = (0, 0)
-                flyer_area = flyer_width * flyer_height
+                # Obtenemos la dimensión seleccionada (p. ej. 'Carta', '20x30', etc.)
+                dim_str, _precio_dim = user_data[user_number]["dimensiones"]
 
+                # Parseamos a width/height con la función parse_dimension
+                flyer_width, flyer_height = parse_dimension(dim_str)
+                if flyer_width <= 0 or flyer_height <= 0:
+                    logging.warning(f"No se pudo parsear la dimensión {dim_str}, se usará 0,0")
+                    flyer_width, flyer_height = (0, 0)
+
+                # Parseamos la dimensión del material
                 material, mat_price, mat_medida = user_data[user_number]["material"]
+                mat_w, mat_h = (0, 0)
                 try:
-                    mat_dims = mat_medida.split("x")
-                    mat_width = float(mat_dims[0])
-                    mat_height = float(mat_dims[1])
-                    if mat_width <= 0 or mat_height <= 0:
-                        raise ValueError("Dimensiones de material inválidas")
+                    # A veces mat_medida puede ser algo como "30x100"
+                    if "x" in mat_medida:
+                        mw, mh = mat_medida.lower().split("x")
+                        mat_w, mat_h = float(mw), float(mh)
+                        if mat_w <= 0 or mat_h <= 0:
+                            mat_w, mat_h = (0, 0)
+                    else:
+                        # Si mat_medida es algo tipo 'carta', 'oficio', etc.
+                        mat_w, mat_h = parse_dimension(mat_medida)
                 except:
-                    mat_width, mat_height = (0, 0)
-                material_area = mat_width * mat_height
-                logging.info(f"Información de cliente: {user_data[user_number]}")
-                flyers_per_sheet = max(math.floor(material_area / flyer_area) - 1, 1)
+                    mat_w, mat_h = (0, 0)
+
+                # Cálculo de costos
+                flyer_area = flyer_width * flyer_height
+                material_area = mat_w * mat_h
+
+                # Evitar divisiones por cero
+                if flyer_area <= 0 or material_area <= 0:
+                    flyers_per_sheet = 1
+                else:
+                    flyers_per_sheet = max(math.floor(material_area / flyer_area) - 1, 1)
+
                 required_sheets = math.ceil(cantidad / flyers_per_sheet) + 2
                 cost_per_sheet = mat_price / 500.0
                 paper_cost = required_sheets * cost_per_sheet
@@ -400,8 +439,8 @@ def telegram_webhook(update: Update, context):
                 client_name = user_data[user_number].get("client_name", "Cliente")
                 descripcion_producto = f"{user_data[user_number]['product'][0]}, Tamaño: {dim_str}, Material: {user_data[user_number]['material'][0]}"
 
-                # Creamos una carpeta para la cotización usando el nombre de cotización y fecha.
-                quote_name = user_data[user_number].get("client_name", "cotizacion")
+                # Creamos una carpeta para la cotización usando el nombre del cliente y la fecha/hora.
+                quote_name = client_name
                 timestamp = time.strftime('%Y%m%d_%H%M%S')
                 quote_folder = f"/var/www/db_serigraph/cotis/{quote_name}_{timestamp}"
                 if not os.path.exists(quote_folder):
@@ -421,7 +460,7 @@ def telegram_webhook(update: Update, context):
                 logging.info(f"Cotización cancelada por {user_number}")
                 del user_data[user_number]
             else:
-                response_message = "Debes ingresar 'si' ó 'no'."
+                response_message = "Debes ingresar 'si' o 'no'."
                 logging.info(f"Cotización cancelada por {user_number}")
         else:
             response_message = "No te entendí. Intenta de nuevo."

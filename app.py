@@ -361,7 +361,7 @@ def telegram_webhook(update: Update, context):
                 user_data[user_number]["additional_values"] = []
                 if additional_list:
                     charge = additional_list[0]
-                    response_message = f"Ingrese el precio para {charge[1]} ({charge[2]}): (valor >= 0)"
+                    response_message = f"Ingrese el precio para {charge[1]} ({charge[2]}): "
                     user_data[user_number]["step"] = "ask_additional"
                 else:
                     response_message = "No hay cargos adicionales. Confirma tu pedido respondiendo 'si' o 'no'."

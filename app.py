@@ -386,6 +386,7 @@ def telegram_webhook(update: Update, context):
                 except:
                     mat_width, mat_height = (0, 0)
                 material_area = mat_width * mat_height
+                logging.info(f"Información de cliente: {user_data[user_number]}")
                 flyers_per_sheet = max(math.floor(material_area / flyer_area) - 1, 1)
                 required_sheets = math.ceil(cantidad / flyers_per_sheet) + 2
                 cost_per_sheet = mat_price / 500.0

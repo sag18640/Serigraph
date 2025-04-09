@@ -298,7 +298,7 @@ def telegram_webhook(update: Update, context):
                     user_data[user_number]["step"] = "dimensiones"
         elif step == "nuevo_producto":
             new_product_name = incoming_message.strip()
-            cursor.execute("INSERT INTO products (product, price) VALUES (?, ?)", (new_product_name, 0.0))
+            cursor.execute("INSERT INTO products (name, price) VALUES (?, ?)", (new_product_name, 0.0))
             conn.commit()
             response_message = f"Producto '{new_product_name}' agregado con éxito.\nSelecciona el producto:\n"
             cursor.execute("SELECT * FROM products;")

@@ -24,8 +24,6 @@ logging.basicConfig(
 )
 
 # Conexión a la base de datos.
-# Se asume que las tablas "products", "dimensions_volante", "material" y "additional_charges" existen.
-# La tabla additional_charges tiene: id, name, description (sin precio)
 conn = sqlite3.connect('/var/www/db_serigraph/seri.db', check_same_thread=False)
 cursor = conn.cursor()
 
@@ -44,7 +42,7 @@ DIMENSION_ALIASES = {
     "carta": (8.5, 11),        # 8.5" x 11"
     "oficio": (8.5, 14),       # 8.5" x 14"
     "media carta": (8.5, 5.5),  # 8.5" x 5.5"
-    "medio oficio": (8.5, 7), # 8.5" x 7"
+    "medio oficio": (8.5, 7),   # 8.5" x 7"
     # Agrega aquí más equivalencias si lo requieres...
 }
 
@@ -53,11 +51,7 @@ def formato_monetario(valor):
 
 def generar_pdf(client_name, material, flyer_width, cantidad, costo_total, descripcion_producto, quote_folder):
     """
-    Genera un PDF de cotización con información esencial y lo guarda en el folder quote_folder:
-      - Nombre del cliente
-      - Producto, tamaño y material
-      - Cantidad cotizada y costo final
-      - Datos de la empresa
+    Genera un PDF de cotización con información esencial y lo guarda en el folder quote_folder.
     """
     file_name = f"cotizacion_{client_name}_{int(time.time())}.pdf"
     file_path = os.path.join(quote_folder, file_name)
@@ -121,11 +115,10 @@ def obtener_cobros():
 
 def parse_dimension(dim_str: str) -> (float, float):
     """
-    Devuelve (width, height) en cm, a partir de un string como '20x30' o 'Carta'.
+    Devuelve (width, height) en cm, a partir de un string como '20x30' o 'carta'.
     Si no se puede parsear, devuelve (0,0).
     """
     dim_str = dim_str.lower().strip()
-    # 1) Si contiene 'x', intentamos parsear como numérico
     if "x" in dim_str:
         try:
             parts = dim_str.split("x")
@@ -134,15 +127,50 @@ def parse_dimension(dim_str: str) -> (float, float):
             return (w, h) if (w > 0 and h > 0) else (0, 0)
         except:
             return (0, 0)
-    # 2) Si no tiene 'x', buscamos en el diccionario de alias
     if dim_str in DIMENSION_ALIASES:
         return DIMENSION_ALIASES[dim_str]
-    # 3) Fallback
     return (0, 0)
+
 # Flujo del webhook de Telegram.
 def telegram_webhook(update: Update, context):
     user_number = update.message.chat.id
     incoming_message = update.message.text.strip()
+
+    # -------------------------------------------------------
+    # Opción de "paso atrás": si el usuario envía "atras"
+    if user_number in user_data and incoming_message.lower() == "atras":
+        current_step = user_data[user_number].get("step", "")
+        back_steps = {
+            "menu": None,  # Si estamos en el menú principal, no retrocede
+            "productos": "menu",
+            "nuevo_producto": "productos",
+            "dimensiones": "productos",
+            "dimension_specific": "dimensiones",
+            "material": "dimensiones",
+            "cantidad": "material",
+            "digital": "cantidad",
+            "ask_margin_modification": "digital",
+            "set_margin": "ask_margin_modification",
+            "ask_additional": "process_additional",
+            "ask_extra_cost": "ask_additional",
+            "extra_cost_amount": "ask_extra_cost",
+            "extra_cost_description": "extra_cost_amount",
+            "confirmacion": "ask_extra_cost",
+            "admin_charges": "menu",
+            "add_charge": "admin_charges",
+            "delete_charge": "admin_charges"
+        }
+        if current_step in back_steps and back_steps[current_step]:
+            prev = back_steps[current_step]
+            user_data[user_number]["step"] = prev
+            response_message = f"Retrocediendo. Por favor ingresa nuevamente la información para '{prev}':"
+            update.message.reply_text(response_message)
+            return
+        else:
+            response_message = "No puedes retroceder en este paso."
+            update.message.reply_text(response_message)
+            return
+    # -------------------------------------------------------
 
     # Consultas de productos, dimensiones y materiales
     cursor.execute("SELECT * FROM products;")
@@ -165,18 +193,15 @@ def telegram_webhook(update: Update, context):
         logging.info(f"Nuevo inicio de conversación con {user_number}")
     elif user_number in user_data:
         step = user_data[user_number]["step"]
-        # Paso 1: pedir nombre de cliente y luego nombre de cotización
         if step == "ask_nombre":
             client_name = incoming_message.strip()
-            logging.info(f"Nueva cotización para cliente  {client_name}")
+            logging.info(f"Nueva cotización para cliente {client_name}")
             if not client_name:
                 response_message = "El nombre no puede estar vacío. Ingresa tu nombre de cliente:"
             else:
                 user_data[user_number]["client_name"] = client_name
                 response_message = "Bienvenido\n1. Cotización\n2. Editar cobros adicionales"
                 user_data[user_number]["step"] = "menu"
-                logging.info(f"Cotización  para cliente {user_data[user_number]['client_name']} ingresada por {user_number}")
-                # user_data[user_number]["step"] = "menu"
                 logging.info(f"Cliente {client_name} ingresado por {user_number}")
         elif step == "ask_quote_name":
             quote_name = incoming_message.strip()
@@ -202,7 +227,7 @@ def telegram_webhook(update: Update, context):
                 response_message = "Opción no válida. Envía '1' para Cotización o '2' para Editar cobros adicionales."
         elif step == "admin_charges":
             if incoming_message == "1":
-                response_message = ("Ingresa el nombre y la descripción separados por coma.\nEj: Pegamento, Especial")
+                response_message = "Ingresa el nombre y la descripción separados por coma.\nEj: Pegamento, Especial"
                 user_data[user_number]["step"] = "add_charge"
             elif incoming_message == "2":
                 charges = obtener_cobros()
@@ -305,7 +330,6 @@ def telegram_webhook(update: Update, context):
                 logging.error(f"Error en selección de dimensión: {e}")
                 response_message = "Error, ingresa un tamaño válido."
         elif step == "dimension_specific":
-            # Se espera un formato válido usando regex, ej. "20x10" o "20 x 10"
             pattern = r'^\s*(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*$'
             match = re.fullmatch(pattern, incoming_message)
             if match:
@@ -314,12 +338,11 @@ def telegram_webhook(update: Update, context):
                 if width <= 0 or height <= 0:
                     response_message = "Las dimensiones deben ser mayores a 0. Ingresa el tamaño nuevamente (Ej: 20x10):"
                     return update.message.reply_text(response_message)
-                # Almacenamos la dimensión ingresada con precio 0.0 por defecto
                 dim_str = f"{width}x{height}"
                 cursor.execute("INSERT INTO dimensions_volante (dimension, price) VALUES (?, ?)", (dim_str, 0.0))
                 conn.commit()
                 texto = f"Tamaño: {dim_str} - Q0.0\nSelecciona material:\n"
-                texto += "\n".join([f"{i}. {mat}" for i, mat in materiales.items()])
+                texto += "\n".join([f"{i}. {mat}" for i, mat in enumerate(materiales.values())])
                 response_message = texto
                 user_data[user_number].update({"step": "material", "dimensiones": (dim_str, 0.0)})
                 logging.info(f"Dimensión específica ingresada: {dim_str} por {user_number}")
@@ -349,13 +372,27 @@ def telegram_webhook(update: Update, context):
                 user_data[user_number]["step"] = "digital"
             except:
                 response_message = "Ingresa una cantidad válida (número mayor a 0)."
-        # Flujo para procesar cargos adicionales: tras la respuesta digital se recorren los cargos definidos en la DB.
+        # Flujo para margen y cargos adicionales
         elif step == "digital":
             if incoming_message.lower() in ["si", "sí", "no"]:
                 user_data[user_number]["digital"] = (incoming_message.lower() in ["si", "sí"])
-                # Consultamos los cargos adicionales definidos en la DB.
+                # Preguntar por el margen de ganancia
+                response_message = "Por defecto, el margen de ganancia es del 50%. ¿Desea modificarlo? (si/no):"
+                user_data[user_number]["step"] = "ask_margin_modification"
+            else:
+                response_message = "Respuesta no válida, ingresa 'si' o 'no'."
+        elif step == "ask_margin_modification":
+            if incoming_message.lower() in ["si", "sí"]:
+                response_message = "Ingresa el porcentaje de margen de ganancia (ej: 50 para 50%):"
+                user_data[user_number]["step"] = "set_margin"
+            elif incoming_message.lower() in ["no"]:
+                user_data[user_number]["margin"] = 50  # Valor por defecto
+                # Procesamos los cargos adicionales definidos en la base de datos
                 cursor.execute("SELECT id, name, description FROM additional_charges")
                 additional_list = cursor.fetchall()
+                # Si es digital, se omiten cargos de "clicks"
+                if user_data[user_number]["digital"]:
+                    additional_list = [charge for charge in additional_list if charge[2].lower() != "clicks"]
                 user_data[user_number]["additional_list"] = additional_list
                 user_data[user_number]["current_charge_index"] = 0
                 user_data[user_number]["additional_values"] = []
@@ -364,10 +401,36 @@ def telegram_webhook(update: Update, context):
                     response_message = f"Ingrese el precio para {charge[1]} ({charge[2]}): "
                     user_data[user_number]["step"] = "ask_additional"
                 else:
-                    response_message = "No hay cargos adicionales. Confirma tu pedido respondiendo 'si' o 'no'."
-                    user_data[user_number]["step"] = "confirmacion"
+                    # Si no hay cargos predefinidos, pasamos a preguntar si desea agregar costos extras
+                    response_message = "No hay cargos adicionales. ¿Desea agregar algún costo extra? (si/no):"
+                    user_data[user_number]["step"] = "ask_extra_cost"
             else:
                 response_message = "Respuesta no válida, ingresa 'si' o 'no'."
+        elif step == "set_margin":
+            try:
+                margin_val = float(incoming_message)
+                if margin_val < 0:
+                    response_message = "El margen no puede ser negativo. Ingresa un valor válido:"
+                    return update.message.reply_text(response_message)
+                user_data[user_number]["margin"] = margin_val
+                # Procesa cargos adicionales después de establecer el margen
+                cursor.execute("SELECT id, name, description FROM additional_charges")
+                additional_list = cursor.fetchall()
+                if user_data[user_number]["digital"]:
+                    additional_list = [charge for charge in additional_list if charge[2].lower() != "clicks"]
+                user_data[user_number]["additional_list"] = additional_list
+                user_data[user_number]["current_charge_index"] = 0
+                user_data[user_number]["additional_values"] = []
+                if additional_list:
+                    charge = additional_list[0]
+                    response_message = f"Ingrese el precio para {charge[1]} ({charge[2]}): "
+                    user_data[user_number]["step"] = "ask_additional"
+                else:
+                    response_message = "No hay cargos adicionales. ¿Desea agregar algún costo extra? (si/no):"
+                    user_data[user_number]["step"] = "ask_extra_cost"
+            except Exception as e:
+                logging.error(f"Error al establecer margen: {e}")
+                response_message = "Por favor, ingresa un número válido para el margen."
         elif step == "ask_additional":
             try:
                 price = float(incoming_message)
@@ -383,36 +446,67 @@ def telegram_webhook(update: Update, context):
                     user_data[user_number]["current_charge_index"] = current_index
                     charge = additional_list[current_index]
                     response_message = f"Ingrese el precio para {charge[1]} ({charge[2]}): "
+                    # Se mantiene el paso "ask_additional"
                 else:
-                    response_message = "Todos los cargos adicionales han sido registrados. Confirma tu pedido respondiendo 'si' o 'no'."
-                    user_data[user_number]["step"] = "confirmacion"
+                    # Al terminar la lista predefinida, se pasa a preguntar sobre costos extras
+                    response_message = "Todos los cargos adicionales han sido registrados. ¿Desea agregar algún costo extra? (si/no):"
+                    user_data[user_number]["step"] = "ask_extra_cost"
             except:
                 response_message = "Ingresa un valor numérico para el precio (valor >= 0)."
+        # NUEVO FLUJO: Preguntar si se desean agregar costos extras que no están en la base de datos
+        elif step == "ask_extra_cost":
+            if incoming_message.lower() in ["si", "sí"]:
+                response_message = "Ingresa el monto del costo extra:"
+                user_data[user_number]["step"] = "extra_cost_amount"
+            elif incoming_message.lower() in ["no"]:
+                response_message = "Todos los cargos extras han sido registrados. Confirma tu pedido respondiendo 'si' o 'no'."
+                user_data[user_number]["step"] = "confirmacion"
+            else:
+                response_message = "Respuesta no válida. Ingresa 'si' o 'no'."
+        elif step == "extra_cost_amount":
+            try:
+                extra_cost = float(incoming_message)
+                if extra_cost < 0:
+                    response_message = "El monto no puede ser negativo. Ingresa un valor mayor o igual a 0:"
+                    return update.message.reply_text(response_message)
+                user_data[user_number]["temp_extra_cost"] = extra_cost
+                response_message = "Ingresa la descripción para el costo extra:"
+                user_data[user_number]["step"] = "extra_cost_description"
+            except:
+                response_message = "Ingresa un valor numérico para el costo extra."
+        elif step == "extra_cost_description":
+            extra_cost = user_data[user_number].pop("temp_extra_cost", 0)
+            extra_desc = incoming_message.strip()
+            # Se define el nombre usando el monto, y se agrega a la base de datos
+            nombre = f"Costo extra Q{extra_cost:,.2f}"
+            agregar_cobro(nombre, extra_desc)
+            # Se suma el costo extra a la lista de cargos adicionales de la cotización
+            additional_values = user_data[user_number].get("additional_values", [])
+            additional_values.append(extra_cost)
+            user_data[user_number]["additional_values"] = additional_values
+            response_message = "Costo extra agregado. ¿Desea agregar otro costo extra? (si/no):"
+            user_data[user_number]["step"] = "ask_extra_cost"
         elif step == "confirmacion":
             if "si" in incoming_message.lower():
                 cantidad = user_data[user_number]["cantidad"]
 
-                # Obtenemos la dimensión seleccionada (p. ej. 'Carta', '20x30', etc.)
+                # Obtenemos la dimensión seleccionada
                 dim_str, _precio_dim = user_data[user_number]["dimensiones"]
-
-                # Parseamos a width/height con la función parse_dimension
                 flyer_width, flyer_height = parse_dimension(dim_str)
                 if flyer_width <= 0 or flyer_height <= 0:
                     logging.warning(f"No se pudo parsear la dimensión {dim_str}, se usará 0,0")
                     flyer_width, flyer_height = (0, 0)
 
-                # Parseamos la dimensión del material
+                # Procesamos la dimensión del material
                 material, mat_price, mat_medida = user_data[user_number]["material"]
                 mat_w, mat_h = (0, 0)
                 try:
-                    # A veces mat_medida puede ser algo como "30x100"
                     if "x" in mat_medida:
                         mw, mh = mat_medida.lower().split("x")
                         mat_w, mat_h = float(mw), float(mh)
                         if mat_w <= 0 or mat_h <= 0:
                             mat_w, mat_h = (0, 0)
                     else:
-                        # Si mat_medida es algo tipo 'carta', 'oficio', etc.
                         mat_w, mat_h = parse_dimension(mat_medida)
                 except:
                     mat_w, mat_h = (0, 0)
@@ -420,26 +514,23 @@ def telegram_webhook(update: Update, context):
                 # Cálculo de costos
                 flyer_area = flyer_width * flyer_height
                 material_area = mat_w * mat_h
-
-                # Evitar divisiones por cero
                 if flyer_area <= 0 or material_area <= 0:
                     flyers_per_sheet = 1
                 else:
                     flyers_per_sheet = max(math.floor(material_area / flyer_area) - 1, 1)
-
                 required_sheets = math.ceil(cantidad / flyers_per_sheet) + 2
                 cost_per_sheet = mat_price / 500.0
                 paper_cost = required_sheets * cost_per_sheet
 
-                # Suma de los precios ingresados para cada cargo adicional.
                 additional_costs = sum(user_data[user_number].get("additional_values", []))
                 total_cost = paper_cost + additional_costs
-                final_cost = (total_cost * 1.5) * 1.17
+                margin = user_data[user_number].get("margin", 50)
+                final_cost = (total_cost * (1 + margin / 100.0)) * 1.17
 
                 client_name = user_data[user_number].get("client_name", "Cliente")
                 descripcion_producto = f"{user_data[user_number]['product'][0]}, Tamaño: {dim_str}, Material: {user_data[user_number]['material'][0]}"
 
-                # Creamos una carpeta para la cotización usando el nombre del cliente y la fecha/hora.
+                # Se crea la carpeta para la cotización
                 quote_name = client_name
                 timestamp = time.strftime('%Y%m%d_%H%M%S')
                 quote_folder = f"/var/www/db_serigraph/cotis/{quote_name}_{timestamp}"
@@ -461,7 +552,6 @@ def telegram_webhook(update: Update, context):
                 del user_data[user_number]
             else:
                 response_message = "Debes ingresar 'si' o 'no'."
-                logging.info(f"Cotización cancelada por {user_number}")
         else:
             response_message = "No te entendí. Intenta de nuevo."
     else:

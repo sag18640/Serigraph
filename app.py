@@ -137,11 +137,11 @@ def telegram_webhook(update: Update, context):
     incoming_message = update.message.text.strip()
 
     # -------------------------------------------------------
-    # Opción de "paso atrás": si el usuario envía "atras"
-    if user_number in user_data and incoming_message.lower() == "atras":
+    # Opción de "paso atrás": se aceptan "atras" o "atrás"
+    if user_number in user_data and incoming_message.lower() in ["atras", "atrás"]:
         current_step = user_data[user_number].get("step", "")
         back_steps = {
-            "menu": None,  # Si estamos en el menú principal, no retrocede
+            "menu": None,  # No se permite retroceder desde el menú principal
             "productos": "menu",
             "nuevo_producto": "productos",
             "dimensiones": "productos",
@@ -149,13 +149,14 @@ def telegram_webhook(update: Update, context):
             "material": "dimensiones",
             "cantidad": "material",
             "digital": "cantidad",
-            "ask_margin_modification": "digital",
-            "set_margin": "ask_margin_modification",
-            "ask_additional": "process_additional",
+            "prepare_charges": "digital",
+            "ask_additional": "prepare_charges",
             "ask_extra_cost": "ask_additional",
             "extra_cost_amount": "ask_extra_cost",
             "extra_cost_description": "extra_cost_amount",
-            "confirmacion": "ask_extra_cost",
+            "ask_margin": "extra_cost_description",
+            "set_margin": "ask_margin",
+            "confirmacion": "set_margin",
             "admin_charges": "menu",
             "add_charge": "admin_charges",
             "delete_charge": "admin_charges"
@@ -372,27 +373,16 @@ def telegram_webhook(update: Update, context):
                 user_data[user_number]["step"] = "digital"
             except:
                 response_message = "Ingresa una cantidad válida (número mayor a 0)."
-        # Flujo para margen y cargos adicionales
+        # Paso: determinar si es digital y luego preparar cargos adicionales
         elif step == "digital":
             if incoming_message.lower() in ["si", "sí", "no"]:
+                # Se guarda True si es digital, False en caso contrario
                 user_data[user_number]["digital"] = (incoming_message.lower() in ["si", "sí"])
-                # Preguntar por el margen de ganancia
-                response_message = "Por defecto, el margen de ganancia es del 50%. ¿Desea modificarlo? (si/no):"
-                user_data[user_number]["step"] = "ask_margin_modification"
-            else:
-                response_message = "Respuesta no válida, ingresa 'si' o 'no'."
-        elif step == "ask_margin_modification":
-            if incoming_message.lower() in ["si", "sí"]:
-                response_message = "Ingresa el porcentaje de margen de ganancia (ej: 50 para 50%):"
-                user_data[user_number]["step"] = "set_margin"
-            elif incoming_message.lower() in ["no"]:
-                user_data[user_number]["margin"] = 50  # Valor por defecto
-                # Procesamos los cargos adicionales definidos en la base de datos
+                # YA NO se pregunta el margen acá. Pasamos a preparar los cargos adicionales.
                 cursor.execute("SELECT id, name, description FROM additional_charges")
                 additional_list = cursor.fetchall()
-                # Si es digital, se omiten cargos de "clicks"
-                if user_data[user_number]["digital"]:
-                    additional_list = [charge for charge in additional_list if charge[2].lower() != "clicks"]
+                # Se filtra siempre para quitar cargos con descripción "clicks"
+                additional_list = [charge for charge in additional_list if charge[2].lower() != "clicks"]
                 user_data[user_number]["additional_list"] = additional_list
                 user_data[user_number]["current_charge_index"] = 0
                 user_data[user_number]["additional_values"] = []
@@ -401,36 +391,11 @@ def telegram_webhook(update: Update, context):
                     response_message = f"Ingrese el precio para {charge[1]} ({charge[2]}): "
                     user_data[user_number]["step"] = "ask_additional"
                 else:
-                    # Si no hay cargos predefinidos, pasamos a preguntar si desea agregar costos extras
+                    # Si no hay cargos predefinidos, pasamos a preguntar por cargos extras
                     response_message = "No hay cargos adicionales. ¿Desea agregar algún costo extra? (si/no):"
                     user_data[user_number]["step"] = "ask_extra_cost"
             else:
                 response_message = "Respuesta no válida, ingresa 'si' o 'no'."
-        elif step == "set_margin":
-            try:
-                margin_val = float(incoming_message)
-                if margin_val < 0:
-                    response_message = "El margen no puede ser negativo. Ingresa un valor válido:"
-                    return update.message.reply_text(response_message)
-                user_data[user_number]["margin"] = margin_val
-                # Procesa cargos adicionales después de establecer el margen
-                cursor.execute("SELECT id, name, description FROM additional_charges")
-                additional_list = cursor.fetchall()
-                if user_data[user_number]["digital"]:
-                    additional_list = [charge for charge in additional_list if charge[2].lower() != "clicks"]
-                user_data[user_number]["additional_list"] = additional_list
-                user_data[user_number]["current_charge_index"] = 0
-                user_data[user_number]["additional_values"] = []
-                if additional_list:
-                    charge = additional_list[0]
-                    response_message = f"Ingrese el precio para {charge[1]} ({charge[2]}): "
-                    user_data[user_number]["step"] = "ask_additional"
-                else:
-                    response_message = "No hay cargos adicionales. ¿Desea agregar algún costo extra? (si/no):"
-                    user_data[user_number]["step"] = "ask_extra_cost"
-            except Exception as e:
-                logging.error(f"Error al establecer margen: {e}")
-                response_message = "Por favor, ingresa un número válido para el margen."
         elif step == "ask_additional":
             try:
                 price = float(incoming_message)
@@ -446,21 +411,22 @@ def telegram_webhook(update: Update, context):
                     user_data[user_number]["current_charge_index"] = current_index
                     charge = additional_list[current_index]
                     response_message = f"Ingrese el precio para {charge[1]} ({charge[2]}): "
-                    # Se mantiene el paso "ask_additional"
+                    # Se mantiene en el paso "ask_additional"
                 else:
-                    # Al terminar la lista predefinida, se pasa a preguntar sobre costos extras
+                    # Terminados los cargos predefinidos, se pregunta si quiere agregar extras
                     response_message = "Todos los cargos adicionales han sido registrados. ¿Desea agregar algún costo extra? (si/no):"
                     user_data[user_number]["step"] = "ask_extra_cost"
             except:
                 response_message = "Ingresa un valor numérico para el precio (valor >= 0)."
-        # NUEVO FLUJO: Preguntar si se desean agregar costos extras que no están en la base de datos
+        # Flujo para agregar costos extras (no predefinidos)
         elif step == "ask_extra_cost":
             if incoming_message.lower() in ["si", "sí"]:
                 response_message = "Ingresa el monto del costo extra:"
                 user_data[user_number]["step"] = "extra_cost_amount"
             elif incoming_message.lower() in ["no"]:
-                response_message = "Todos los cargos extras han sido registrados. Confirma tu pedido respondiendo 'si' o 'no'."
-                user_data[user_number]["step"] = "confirmacion"
+                # En lugar de ir directo a confirmación, se pregunta por el margen justo antes de confirmar.
+                response_message = "Por defecto, el margen de ganancia es del 50%. ¿Desea modificarlo? (si/no):"
+                user_data[user_number]["step"] = "ask_margin"
             else:
                 response_message = "Respuesta no válida. Ingresa 'si' o 'no'."
         elif step == "extra_cost_amount":
@@ -477,15 +443,38 @@ def telegram_webhook(update: Update, context):
         elif step == "extra_cost_description":
             extra_cost = user_data[user_number].pop("temp_extra_cost", 0)
             extra_desc = incoming_message.strip()
-            # Se define el nombre usando el monto, y se agrega a la base de datos
-            nombre = f"Costo extra Q{extra_cost:,.2f}"
+            # Se define un nombre genérico para el costo extra y se agrega a la base de datos
+            nombre = f"costo"
             agregar_cobro(nombre, extra_desc)
-            # Se suma el costo extra a la lista de cargos adicionales de la cotización
+            # Se suma el costo extra a la suma de cargos de la cotización
             additional_values = user_data[user_number].get("additional_values", [])
             additional_values.append(extra_cost)
             user_data[user_number]["additional_values"] = additional_values
             response_message = "Costo extra agregado. ¿Desea agregar otro costo extra? (si/no):"
             user_data[user_number]["step"] = "ask_extra_cost"
+        # Preguntar por el margen justo antes de confirmar
+        elif step == "ask_margin":
+            if incoming_message.lower() in ["si", "sí"]:
+                response_message = "Ingresa el porcentaje de margen de ganancia (ej: 50 para 50%):"
+                user_data[user_number]["step"] = "set_margin"
+            elif incoming_message.lower() in ["no"]:
+                user_data[user_number]["margin"] = 50  # Valor por defecto
+                response_message = "Confirma tu pedido respondiendo 'si' o 'no':"
+                user_data[user_number]["step"] = "confirmacion"
+            else:
+                response_message = "Respuesta no válida. Ingresa 'si' o 'no'."
+        elif step == "set_margin":
+            try:
+                margin_val = float(incoming_message)
+                if margin_val < 0:
+                    response_message = "El margen no puede ser negativo. Ingresa un valor válido:"
+                    return update.message.reply_text(response_message)
+                user_data[user_number]["margin"] = margin_val
+                response_message = "Confirma tu pedido respondiendo 'si' o 'no':"
+                user_data[user_number]["step"] = "confirmacion"
+            except Exception as e:
+                logging.error(f"Error al establecer margen: {e}")
+                response_message = "Por favor, ingresa un número válido para el margen."
         elif step == "confirmacion":
             if "si" in incoming_message.lower():
                 cantidad = user_data[user_number]["cantidad"]

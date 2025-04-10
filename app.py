@@ -39,10 +39,10 @@ if not os.path.exists(TEMP_PDF_DIR):
     os.makedirs(TEMP_PDF_DIR)
 
 DIMENSION_ALIASES = {
-    "carta": (8.5, 11),        # 8.5" x 11"
-    "oficio": (8.5, 14),       # 8.5" x 14"
-    "media carta": (8.5, 5.5),  # 8.5" x 5.5"
-    "medio oficio": (8.5, 7),   # 8.5" x 7"
+    "carta 8.5x11": (8.5, 11),        # 8.5" x 11"
+    "oficio 8.5x14": (8.5, 14),       # 8.5" x 14"
+    "media carta 8.5x5.5": (8.5, 5.5),  # 8.5" x 5.5"
+    "medio oficio 8.5x7": (8.5, 7),   # 8.5" x 7"
     # Agrega aquí más equivalencias si lo requieres...
 }
 
@@ -290,7 +290,7 @@ def telegram_webhook(update: Update, context):
                     producto = product_keys[opcion - 1]
                     precio_producto = diccionario_productos[producto]
                     user_data[user_number]["product"] = (producto, precio_producto)
-                    texto = f"{producto} - Q{precio_producto}\nElige tamaño:\n"
+                    texto = f"{producto} - \nElige tamaño (dimensional inches):\n"
                     texto += "0. Agregar nuevo tamaño (Ej: 20x10)\n"
                     texto += "\n".join([f"{i+1}. {dim}" for i, dim in enumerate(diccionario_dimensiones.keys())])
                     response_message = texto
@@ -322,7 +322,7 @@ def telegram_webhook(update: Update, context):
                     else:
                         dim = dims_list[opcion_int - 1]
                         precio_dim = diccionario_dimensiones[dim]
-                        texto = f"Tamaño: {dim} - Q{precio_dim}\nSelecciona material:\n"
+                        texto = f"Tamaño: {dim} - \nSelecciona material:\n"
                         texto += "\n".join([f"{i}. {mat}" for i, mat in materiales.items()])
                         response_message = texto
                         user_data[user_number].update({"step": "material", "dimensiones": (dim, precio_dim)})
@@ -341,7 +341,7 @@ def telegram_webhook(update: Update, context):
                 dim_str = f"{width}x{height}"
                 cursor.execute("INSERT INTO dimensions_volante (dimension, price) VALUES (?, ?)", (dim_str, 0.0))
                 conn.commit()
-                texto = f"Tamaño: {dim_str} - Q0.0\nSelecciona material:\n"
+                texto = f"Tamaño: {dim_str} - \nSelecciona material:\n"
                 texto += "\n".join([f"{i}. {mat}" for i, mat in enumerate(materiales.values())])
                 response_message = texto
                 user_data[user_number].update({"step": "material", "dimensiones": (dim_str, 0.0)})

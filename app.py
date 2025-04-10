@@ -386,9 +386,12 @@ def telegram_webhook(update: Update, context):
                 cursor.execute("SELECT id, name, description FROM additional_charges")
                 additional_list = cursor.fetchall()
                 # Si es digital se eliminan los cargos de "clicks"; si no, se incluyen
-                print(user_data[user_number]["digital"])
-                logging.warning("DATA DIGITAL:", user_data[user_number]["digital"])
+                # print(user_data[user_number]["digital"])
+                logging.warning("DATA DIGITAL:",(incoming_message.lower() in ["si", "sí"]))
                 if user_data[user_number]["digital"]:
+                    logging.warning("ENTRO")
+                    print(charge for charge in additional_list if charge[2].lower() != "clicks")
+                    logging.warning(charge for charge in additional_list if charge[2].lower() != "clicks")
                     additional_list = [charge for charge in additional_list if charge[2].lower() != "clicks"]
                 user_data[user_number]["additional_list"] = additional_list
                 user_data[user_number]["current_charge_index"] = 0

@@ -115,20 +115,26 @@ def obtener_cobros():
 
 def parse_dimension(dim_str: str) -> (float, float):
     """
-    Devuelve (width, height) en cm, a partir de un string como '20x30' o 'carta'.
+    Devuelve (width, height) en cm a partir de una cadena como '20x30', 'carta' o 'carta 8.5x11'.
     Si no se puede parsear, devuelve (0,0).
     """
     dim_str = dim_str.lower().strip()
-    if "x" in dim_str:
+    
+    # Buscar un patrón que contenga dos números separados por "x"
+    match = re.search(r'(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)', dim_str)
+    if match:
         try:
-            parts = dim_str.split("x")
-            w = float(parts[0])
-            h = float(parts[1])
-            return (w, h) if (w > 0 and h > 0) else (0, 0)
-        except:
+            w = float(match.group(1))
+            h = float(match.group(2))
+            if w > 0 and h > 0:
+                return (w, h)
+        except Exception:
             return (0, 0)
+    
+    # Si no se encontró un patrón numérico, se busca el alias completo en DIMENSION_ALIASES.
     if dim_str in DIMENSION_ALIASES:
         return DIMENSION_ALIASES[dim_str]
+    
     return (0, 0)
 
 # Flujo del webhook de Telegram.

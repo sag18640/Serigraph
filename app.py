@@ -11,6 +11,8 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 import sqlite3
+from reportlab.lib import colors
+from reportlab.lib.colors import HexColor
 
 load_dotenv()
 app = Flask(__name__)
@@ -49,52 +51,229 @@ DIMENSION_ALIASES = {
 def formato_monetario(valor):
     return f"Q{valor:,.2f}"
 
-def generar_pdf(client_name, material, flyer_width, cantidad, costo_total, descripcion_producto, quote_folder):
+def generar_pdf(client_name, material, flyer_width, cantidad, costo_total, descripcion_producto, quote_folder,day):
     """
     Genera un PDF de cotización con información esencial y lo guarda en el folder quote_folder.
     """
     file_name = f"cotizacion_{client_name}_{int(time.time())}.pdf"
     file_path = os.path.join(quote_folder, file_name)
-    c = canvas.Canvas(file_path, pagesize=letter)
+    c = canvas.Canvas(file_path, pagesize=A4)
 
     # Logo y datos de la empresa
-    logo = ImageReader('/var/www/db_serigraph/seri.png')
-    c.drawImage(logo, 50, 720, width=120, height=70, preserveAspectRatio=True)
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(200, 770, "Serigráfica Internacional, S.A.")
-    c.setFont("Helvetica", 10)
-    c.drawString(200, 755, "10 avenida 25-63 zona 13, Complejo Industrial Aurora Bodega 13")
-    c.drawString(200, 740, "Tel: (502) 2319-2900")
-    c.drawString(200, 725, "NIT: 528440-6")
-    c.setFont("Helvetica-Bold", 11)
-    c.drawString(430, 770, f"Cotización No. {int(time.time()) % 100000}")
-    c.setFont("Helvetica", 10)
-    c.drawString(430, 725, f"Fecha: {time.strftime('%d/%m/%Y')}")
-    c.line(50, 710, 560, 710)
+    logo = ImageReader('seri.png')
+    c.drawImage(logo, 4, 725, width=140, height=90, preserveAspectRatio=True)
+    x, y = 220, 735
+    prefijo = "Hoja de cotización: "
+    sufijo = f"No. {int(time.time()) % 100000}"
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(x, y, prefijo)
+    ancho_prefijo = c.stringWidth(prefijo, "Helvetica-Bold", 13)
+    c.setFont("Helvetica", 15)
+    c.drawString(x + ancho_prefijo, y, sufijo)
+    
+    
+    c.setFont("Helvetica", 12)
+    c.drawString(130, 715, "Serigráfica Internacional, S.A.")
+    c.setFont("Helvetica", 12)
+    c.drawString(130, 700, "10 avenida 25-63 zona 13")
+    c.drawString(130, 685, "Complejo Industrial Aurora Bodega 13")
+    c.drawString(130, 670, "Tel: (502) 2319-2900")
+    c.drawString(130, 655, "NIT: 528440-6")
+#     c.setFont("Helvetica-Bold", 11)
+    c.setFont("Helvetica", 12)
+    c.drawString(130, 640, f"Fecha: {time.strftime('%d/%m/%Y')}")
+    c.setFont("Helvetica", 12)
+    c.drawString(130, 625, f"Dirigido a: {client_name}")
+#     c.drawString(220, 690, f"Hoja de cotización: No. {int(time.time()) % 100000}")
 
-    # Datos del cliente y del producto
+    c.setLineWidth(1.5)
+
+    # --- Parámetros del recuadro exterior ---
+    x0, y0 = 50,  150    # esquina inferior izquierda
+    w,  h  = 500, 470   # ancho y alto del recuadro
+
+    # Dibuja el rectángulo exterior
+    c.rect(x0, y0, w, h)
+
+    # --- Líneas verticales internas ---
+    # División entre CANTIDAD y DESCRIPCIÓN
+    x1 = x0 +  80
+    c.line(x1, y0, x1, y0 + h)
+
+    # División entre DESCRIPCIÓN y TOTAL
+    x2 = x0 + 430
+    c.line(x2, y0, x2, y0 + h)
+
+
+
+    # Para separar el encabezado de la tabla
+    y_header = y0 + h - 20
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(x0+10, y_header, f"CANTIDAD")
+#     c.line(x0, y_header, x0 + w, y_header)
+    ancho = c.stringWidth(f"CANTIDAD", "Helvetica-Bold", 12)
+    # 2) Ajusta grosor y distancia de la línea
+    c.setLineWidth(1)
+    underline_gap = 3  # cuantos puntos por debajo de la “baseline”
+    # 3) Dibuja la línea
+    c.line(x0+10, y_header - underline_gap,
+           x0+10 + ancho, y_header - underline_gap)
+    
+    #Description
+    x_text2 = x0 + 220
+    y_text  = y0 + h - 20
+
+    # Dibuja “Descripción”
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(x_text2, y_text, "DESCRIPCION")
+
+    # Mide su ancho
+    ancho2 = c.stringWidth("DESCRIPCION", "Helvetica-Bold", 12)
+
+    # Traza la línea justo debajo, con la misma X inicial
+    underline_gap = 3
+    c.setLineWidth(1)
+    c.line(x_text2,           y_text - underline_gap,
+           x_text2 + ancho2,  y_text - underline_gap)
+    
+    
+    #Total
+    x_text2 = x0 + 440
+    y_text  = y0 + h - 20
+
+    # Dibuja “Descripción”
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(x_text2, y_text, "TOTAL:")
+
+    # Mide su ancho
+    ancho2 = c.stringWidth("TOTAL:", "Helvetica-Bold", 12)
+
+    # Traza la línea justo debajo, con la misma X inicial
+    underline_gap = 3
+    c.setLineWidth(1)
+    c.line(x_text2,           y_text - underline_gap,
+           x_text2 + ancho2,  y_text - underline_gap)
+    
+    
+    
+    #CANTIDAD DE PRODUCTOS CUADRO
+    c.setFont("Helvetica-Bold", 8)
+    x0_cuadro_datos= x0 + 35
+    y_text  = y0 + h - 50
+    c.drawString(x0_cuadro_datos, y_text, f"{cantidad}")
+    x0_cuadro_datos= x0 + 25
+    y_text  = y0 + h - 60
+    c.drawString(x0_cuadro_datos, y_text, f"Unidades")
+    
+    
+    #DESCRIPCION PRODUCTO
+    c.setFont("Helvetica-Bold", 9)
+    x0_cuadro_datos= x0 + 90
+    y_text  = y0 + h - 50
+    c.drawString(x0_cuadro_datos, y_text, f"{descripcion_producto}")
+    
+    
+    #MINI CUADROS
+    # --- Dibujemos ahora las mini cajas de la columna TOTAL ---
+    # 1) Calcula ancho de la columna TOTAL
+    col_total_x    = x2                   # origen X de la columna
+    col_total_w    = (x0 + w) - x2        # ancho de la columna
+    pad            = 5                    # un pequeño padding interno
+
+    # 2) Define alto de cada caja
+    box_h = 50   # ajusta según necesites
+
+    # 3) Primera caja: P/U
+    box1_x = col_total_x + pad
+    box1_y = y0 + h - pad - box_h         # empieza justo abajo del tope del recuadro
+    box1_w = col_total_w - 2*pad
+    c.rect(box1_x, box1_y-40, box1_w, box_h)
+
+    # añade el texto centrado o con padding
     c.setFont("Helvetica-Bold", 10)
-    c.drawString(50, 690, f"Cliente: {client_name}")
-    c.setFont("Helvetica", 10)
-    c.drawString(50, 670, f"Producto: {descripcion_producto}")
-    c.drawString(50, 650, f"Cantidad: {cantidad} unidades")
-    c.drawString(50, 630, f"Costo final: {formato_monetario(costo_total)}")
+    c.drawString(box1_x + pad, box1_y + box_h - 55, f"P/U:")
+    c.drawString(box1_x + pad, box1_y + box_h - 70, f"Q{costo_total/cantidad:.2f}")
+
+    # 4) Segunda caja: TOTAL
+    box2_x = box1_x
+    box2_y = box1_y - pad - box_h         # separada por el mismo padding
+    box2_w = box1_w
+    c.rect(box2_x, box2_y-50, box2_w, box_h)
+
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(box2_x + pad, box2_y + box_h - 70, f"TOTAL:")
+    c.drawString(box2_x + pad, box2_y + box_h - 85, f"Q{costo_total:.2f}")
+
+    #TOTAL PRODUCTO CUADRO
+    
+    
+
+
+#     c.drawString(50, 630, f"Costo final: {formato_monetario(costo_total)}")
 
     # Mensaje final
+    # Posición base para el texto final
+    x0_1, y0_1 = 60, 140
+    leading = 13
+
+    # 1) Dibujo las primeras 3 líneas con TextObject en NEGRO
+    c.setFillColor(colors.black)
     c.setFont("Helvetica", 9)
-    text_object = c.beginText(50, 600)
-    text_object.setLeading(13)
-    mensaje = (
-        "El tiempo de entrega es de 5 días hábiles desde la aprobación del proyecto.\n"
-        "El pago es contra entrega, salvo acuerdo previo.\n"
-        "Envía tu diseño a: jjdahud@gmail.com\n\n"
-        "Gracias por confiar en Serigráfica Internacional"
-    )
-    for linea in mensaje.split("\n"):
-        text_object.textLine(linea)
-    c.drawText(text_object)
+    text = c.beginText(x0_1, y0_1)
+    text.setLeading(leading)
+    for linea in [
+        f"El tiempo de entrega es de {day} día hábil, desde el momento de la aprobación del proyecto y arte.",
+        "Si el proyecto está antes, se le llamará para notificarle.",
+        "El pago es a contra entrega, salvo que se pacte lo contrario."
+    ]:
+        text.textLine(linea)
+    c.drawText(text)
+
+    # Calcula la Y donde terminó el TextObject
+    # Son 3 líneas → baja 3 * leading
+    y_despues = y0_1 - 3 * leading
+
+    base = "Si cuenta con el diseño de la impresión, mandar a "
+    c.setFont("Helvetica", 9)
+    c.setFillColor(colors.black)
+    c.drawString(x0_1, y_despues, base)
+
+    # 2) Calcula X de inicio del correo
+    ancho_base = c.stringWidth(base, "Helvetica", 9)
+    x_correo = x0_1 + ancho_base
+
+    # 3) Dibuja el correo en AZUL
+    correo = "jjdahud@gmail.com"
+    c.setFillColor(colors.blue)
+    c.drawString(x_correo, y_despues, correo)
+
+    # 4) Subrayado: usa la misma X y la misma anchura
+    ancho_correo = c.stringWidth(correo, "Helvetica", 9)
+    gap = 2  # separación desde la baseline
+    c.setStrokeColor(colors.blue)
+    c.setLineWidth(0.5)
+    c.line(x_correo, y_despues - gap, x_correo + ancho_correo, y_despues - gap)
+
+    # 5) (Opcional) Restaura color negro para lo que siga dibujando
+    c.setFillColor(colors.black)
+    c.setStrokeColor(colors.black)
+
+    # 3) Finalmente la línea de “Muchas gracias…” en AMBAR
+    texto_gracias = "Muchas gracias por contactar a Zerigráfica Internacional"
+    # baja una línea extra para separar
+    y_gracias = y_despues - leading - 5  
+    c.setFont("Helvetica-Bold", 9)
+    c.setFillColor(HexColor("#FFBF00"))   # amber
+    c.drawString(x0_1, y_gracias, texto_gracias)
+
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(x0_1+200, y_gracias-30, "Att: José David")
+    c.drawString(x0_1+200, y_gracias-45, "Gerente General")
+    # 4) (Opcional) Vuelve a negro para lo que siga
+    c.setFillColor(colors.black)
 
     c.save()
+    return file_path
     logging.info(f"PDF generado para {client_name} en {file_path}")
     return file_path
 
@@ -431,11 +610,38 @@ def telegram_webhook(update: Update, context):
                 response_message = "Ingresa el monto del costo extra:"
                 user_data[user_number]["step"] = "extra_cost_amount"
             elif incoming_message.lower() in ["no"]:
-                # Se pasa a preguntar por el margen justo antes de confirmar
+                # EN LUGAR de ir directamente a ask_margin, preguntamos por días hábiles
+                response_message = "¿En cuántos días hábiles requieres la entrega?"
+                user_data[user_number]["step"] = "ask_days"
+            else:
+                response_message = "Respuesta no válida. Ingresa 'si' o 'no'."
+        elif step == "ask_days":
+            try:
+                dias = int(incoming_message)
+                user_data[user_number]["dias_habiles"] = dias
+                response_message = "¿Es servicio tiro-retiro? (si/no):"
+                user_data[user_number]["step"] = "ask_tiro_retiro"
+            except:
+                response_message = "Por favor ingresa un número entero de días hábiles."
+        elif step == "ask_tiro_retiro":
+            if incoming_message.lower() in ["si", "sí"]:
+                response_message = "¿Cuál es el costo extra de tiro-retiro?"
+                user_data[user_number]["step"] = "ask_tiro_retiro_cost"
+            elif incoming_message.lower() in ["no"]:
+                user_data[user_number]["tirretiro_cost"] = 0.0
                 response_message = "Por defecto, el margen de ganancia es del 50%. ¿Desea modificarlo? (si/no):"
                 user_data[user_number]["step"] = "ask_margin"
             else:
                 response_message = "Respuesta no válida. Ingresa 'si' o 'no'."
+
+        elif step == "ask_tiro_retiro_cost":
+            try:
+                cost_tr = float(incoming_message)
+                user_data[user_number]["tirretiro_cost"] = cost_tr
+                response_message = "Por defecto, el margen de ganancia es del 50%. ¿Desea modificarlo? (si/no):"
+                user_data[user_number]["step"] = "ask_margin"
+            except:
+                response_message = "Ingresa un valor numérico para el costo extra."
         elif step == "extra_cost_amount":
             try:
                 extra_cost = float(incoming_message)
@@ -509,10 +715,12 @@ def telegram_webhook(update: Update, context):
                 required_sheets = math.ceil(cantidad / flyers_per_sheet) + 2
                 cost_per_sheet = mat_price / 500.0
                 paper_cost = required_sheets * cost_per_sheet
-                additional_costs = sum(user_data[user_number].get("additional_values", []))
+                dias = user_data[user_number].get("dias_habiles", 1)
+                costo_tr = user_data[user_number].get("tirretiro_cost", 0.0)
+                additional_costs = sum(user_data[user_number].get("additional_values", []))+costo_tr
                 total_cost = paper_cost + additional_costs
                 margin = user_data[user_number].get("margin", 50)
-                final_cost = (total_cost * (1 + margin / 100.0)) * 1.17
+                final_cost = (total_cost * (1 + margin / 100.0) + costo_tr) * 1.17
                 client_name = user_data[user_number].get("client_name", "Cliente")
                 descripcion_producto = f"{user_data[user_number]['product'][0]}, Tamaño: {dim_str}, Material: {user_data[user_number]['material'][0]}"
                 quote_name = client_name
@@ -523,7 +731,7 @@ def telegram_webhook(update: Update, context):
                     logging.info(f"Carpeta creada: {quote_folder}")
                 file_path = generar_pdf(client_name, user_data[user_number]["material"][0],
                                         flyer_width, cantidad, final_cost, descripcion_producto,
-                                        quote_folder)
+                                        quote_folder,dias)
                 context.bot.send_document(chat_id=user_number, document=open(file_path, 'rb'),
                                           filename=os.path.basename(file_path))
                 response_message = "¡Cotización generada!"

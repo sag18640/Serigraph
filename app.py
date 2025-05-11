@@ -60,7 +60,7 @@ def generar_pdf(client_name, material, flyer_width, cantidad, costo_total, descr
     c = canvas.Canvas(file_path, pagesize=A4)
 
     # Logo y datos de la empresa
-    logo = ImageReader('seri.png')
+    logo = ImageReader('/var/www/db_serigraph/seri.png')
     c.drawImage(logo, 4, 725, width=140, height=90, preserveAspectRatio=True)
     x, y = 220, 735
     prefijo = "Hoja de cotización: "

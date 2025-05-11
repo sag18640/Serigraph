@@ -7,7 +7,7 @@ from flask import Flask, request, send_from_directory
 from dotenv import load_dotenv
 from telegram import Bot, Update
 from telegram.ext import Dispatcher, MessageHandler, Filters
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import letter, A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 import sqlite3
